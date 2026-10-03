@@ -50,7 +50,17 @@ function fmtMoney(n) {
 const npc = id => S.npcs.find(n => n.id === id);
 const song = id => S.songs.find(s => s.id === id);
 const release = id => S.releases.find(r => r.id === id);
-const labelOf = id => LABELS.find(l => l.id === id);
+const labelOf = id => id === 'mylabel' ? (S && S.myLabel ? myLabelObj() : null) : LABELS.find(l => l.id === id);
+function myLabelObj() {
+  const L = S.myLabel;
+  return {
+    id: 'mylabel', name: L.name, tier: '내 레이블', minFame: 0, promo: +(1.1 + 0.2 * L.lv.promo).toFixed(2), share: 1, advance: 0,
+    cred: 2 + L.lv.studio, global: 0.03 * L.lv.promo, quota: 0, weeks: 0, genres: GENRES, own: true,
+    desc: `${S.player.stage}${josa(S.player.stage, '이')} ${dateLabel(L.foundedT)}에 설립한 레이블`
+  };
+}
+/* 내 노래에 적용되는 레이블 (계약 레이블 또는 내 레이블) */
+function myActiveLabel() { const p = S.player; return p.label ? labelOf(p.label) : S.myLabel ? myLabelObj() : null; }
 const crewOf = id => S.crews.find(c => c.id === id);
 const P = () => S.player;
 function totalFollowers() { const f = S.player.followers; return f.insta + f.x + f.youtube; }
@@ -70,8 +80,25 @@ function addMilestone(key, text) {
   addNews('🏁 커리어 마일스톤: ' + text, 'good');
   return true;
 }
+/* 한국어 조사: 마지막 글자 받침 여부로 은/는, 이/가 등을 고른다 */
+const JOSA = { '은': ['은', '는'], '이': ['이', '가'], '을': ['을', '를'], '과': ['과', '와'], '으로': ['으로', '로'], '아': ['아', '야'] };
+function hasBatchim(word) {
+  const w = String(word).replace(/[\s」』)\]"'.!?~]+$/, '');
+  const c = w.charCodeAt(w.length - 1);
+  if (c >= 0xAC00 && c <= 0xD7A3) return (c - 0xAC00) % 28;
+  return /[lmnrLMNR0136789]$/.test(w) ? 1 : 0;
+}
+function josa(word, key) {
+  const pair = JOSA[key]; if (!pair) return '';
+  const b = hasBatchim(word);
+  if (key === '으로' && b === 8) return '로'; // ㄹ 받침
+  return b ? pair[0] : pair[1];
+}
 function fill(str, vars) {
-  return str.replace(/\{(\w+)\}/g, (_, k) => vars[k] !== undefined ? vars[k] : '');
+  return str.replace(/\{(?:([^:{}]+):)?(\w+)\}/g, (_, j, k) => {
+    const v = vars[k] !== undefined ? vars[k] : '';
+    return j ? josa(v, j) : v;
+  });
 }
 
 /* ---------- 팬 반응 생성 ---------- */
@@ -130,7 +157,7 @@ function newGame({ name, stage, bgId, genre, gender }) {
       label: null, contract: null, crew: null,
       debutT: null, lastReleaseT: null, dissTarget: null, dissDeadline: 0,
       tvDoneYear: 0, burnout: false, totalEarned: 0,
-      weeklyDom: 0, weeklyGlob: 0
+      weeklyDom: 0, weeklyGlob: 0, inspiration: [], military: null
     },
     ap: 3, postsLeft: 3,
     npcs: [], crews: CREWS.map(c => Object.assign({ own: false }, c)),
@@ -138,14 +165,26 @@ function newGame({ name, stage, bgId, genre, gender }) {
     charts: { melon: [], hot100: [], bb200: [] }, chartMeta: {},
     posts: [], reactions: [], news: [], inbox: [],
     awards: {}, trophies: [], nominations: [], yearLists: [], milestones: [],
-    history: [], lastSummary: null, cooldowns: {}
+    history: [], lastSummary: null, cooldowns: {},
+    flags: {}, flagT: {}, story: [], npcWins: {}, goalsDone: {}, chapter: 0,
+    myLabel: null, rivalId: null, mentorId: null, lastRelCritic: null
   };
   // NPC
   NPC_KR.forEach(n => S.npcs.push(mkNpc(n, 'KR')));
   NPC_GLOBAL.forEach(n => S.npcs.push(mkNpc(n, 'GLOBAL')));
-  S.npcs.forEach(n => {
-    if ((n.region === 'KR' && n.fame < 20 && n.role === 'artist') || (n.region === 'GLOBAL' && n.fame < 70)) n.debutYear = START_YEAR - 1;
-  });
+  // 작년 데뷔한 신인들 (첫 시상식 신인상 후보)
+  spawnRookies(START_YEAR - 1, 3, 1);
+  // 라이벌: 나와 같은 해에 데뷔하는 동갑내기
+  const rival = mkNpc({
+    name: genArtistName('KR'), genre: genre || bg.genre, fame: Math.max(4, bg.fame + 2), skill: rint(64, 74),
+    trait: pick(['허세', '카리스마', '독설가']), bio: `${stage}${josa(stage, '과')} 같은 해에 데뷔한 라이벌`
+  }, 'KR');
+  rival.debutYear = START_YEAR; rival.forceRelT = rint(5, 12); rival.rival = true; rival.rel = 20;
+  S.npcs.push(rival); S.rivalId = rival.id;
+  // 멘토: 같은 장르의 베테랑
+  const vets = S.npcs.filter(n => n.region === 'KR' && n.role === 'artist' && !n.rival && n.genre === (genre || bg.genre)).sort((a, b) => b.skill - a.skill);
+  const mentor = vets[0] || S.npcs.find(n => n.region === 'KR' && n.role === 'artist');
+  mentor.rel = 30; mentor.mentor = true; S.mentorId = mentor.id;
   // 작년(2025) 씬 시뮬레이션: 시상식/차트에 필요한 데이터
   S.npcs.filter(n => n.debutYear === START_YEAR - 1).forEach(n => n.forceRelT = rint(-40, -5));
   for (let t = -51; t <= 0; t++) {
@@ -157,6 +196,8 @@ function newGame({ name, stage, bgId, genre, gender }) {
   S.t = 1;
   computeCharts(true);
   addNews(`${stage}, 음악 인생을 시작하다. "언젠가 그래미 무대에 설 거야."`, 'good');
+  addStory(fill(PROLOGUE[bg.id] || PROLOGUE.underground, storyVars()), 'prologue');
+  addStory(`${CHAPTERS[0].title} — ${fill(CHAPTERS[0].text, storyVars())}`, 'chapter');
   react('post_daily', 2, {}, { weights: { hater: 0, meme: 0 } });
   save();
   return S;
@@ -166,17 +207,68 @@ function mkNpc(n, region) {
   return {
     id: uid('a'), name: n.name, genre: n.genre, fame: n.fame, skill: n.skill, trait: n.trait,
     label: n.label || null, crew: n.crew || null, role: n.role || 'artist', region,
-    rel: rint(0, 22), debutYear: 2016 + rint(0, 7), lastRelT: -999, forceRelT: null
+    rel: rint(0, 22), debutYear: 2016 + rint(0, 7), lastRelT: -999, forceRelT: null, bio: n.bio || ''
   };
 }
 
-function genTitle(region) {
-  if (region === 'GLOBAL' || R() < 0.3) {
-    const w = pick(WORDS_EN);
-    return R() < 0.25 ? w + ' ' + pick(['Season', 'Dreams', 'Nights', 'Boy', 'Girl', 'Heart', 'City']) : w;
+function spawnRookies(y, nk, ng) {
+  const out = [];
+  for (let i = 0; i < nk + ng; i++) {
+    const region = i < nk ? 'KR' : 'GLOBAL';
+    const n = mkNpc({
+      name: genArtistName(region),
+      genre: pick(region === 'KR' ? ['힙합', '힙합', '힙합', 'R&B', 'R&B', '인디', '팝', '록', '일렉트로닉'] : ['힙합', 'R&B', '팝', '인디']),
+      fame: region === 'KR' ? rint(5, 25) : rint(40, 70), skill: rint(55, 88),
+      trait: pick(['감성적', '유쾌함', '허세', '장인', '신비주의', '독설가']), bio: `${y}년 데뷔한 신인`
+    }, region);
+    n.name = n.name.trim();
+    while (S.npcs.find(x => x.name === n.name)) n.name += ' ' + pick(['K', 'J', 'Z', '2', 'Jr.']);
+    n.debutYear = y;
+    n.forceRelT = (y - START_YEAR) * 52 + rint(2, 40);
+    S.npcs.push(n); out.push(n);
   }
-  const w = pick(WORDS_KR);
-  return R() < 0.25 ? w + pick(['의 노래', '에서', ' (Interlude)', ' 2', '처럼', '을 넘어']) : w;
+  return out;
+}
+
+/* ---------- 스토리 ---------- */
+function storyVars(extra) {
+  const p = S.player;
+  const r = S.rivalId && npc(S.rivalId), m = S.mentorId && npc(S.mentorId);
+  return Object.assign({
+    stage: p.stage, name: p.name, rival: r ? r.name : '라이벌', mentor: m ? m.name : '선배',
+    child: p.gender === 'm' ? '아들' : p.gender === 'f' ? '딸' : '우리 애',
+    sib: p.gender === 'm' ? '형' : p.gender === 'f' ? '누나' : '선배님',
+    years: p.debutT ? Math.max(1, Math.round((S.t - p.debutT) / 52)) : 1
+  }, extra || {});
+}
+function addStory(text, kind = 'story') {
+  S.story.push({ t: S.t, text, kind });
+  if (S.story.length > 400) S.story.shift();
+}
+
+/* 곡 제목 생성: 장르별 단어장 + 다양한 패턴 */
+function genTitle(region, genre) {
+  const r = R();
+  if (region === 'GLOBAL') {
+    if (r < 0.45) return pick(TITLE_EN_GLOBAL);
+    if (r < 0.85) return fill(pick(EN_PATTERN), { w: pick(EN_WORD) });
+    return pick(NUM_TITLES.filter(x => /^[\x00-\x7F]+$/.test(x)));
+  }
+  const bank = TITLE_BANK[genre] || TITLE_BANK['힙합'];
+  if (r < 0.38) return pick(bank);
+  if (r < 0.62) return fill(pick(KR_PHRASE), { n: pick(KR_NOUN), a: pick(KR_ADJ) });
+  if (r < 0.78) return fill(pick(EN_PATTERN), { w: pick(EN_WORD) });
+  if (r < 0.86) return pick(NUM_TITLES);
+  if (r < 0.93) return pick(genre === '힙합' ? SLANG_TITLES : MIX_TITLES);
+  return pick(MIX_TITLES);
+}
+function genAlbumTitle(region, genre, artist) {
+  const pat = pick(ALBUM_PATTERN);
+  const k = pick(KR_NOUN);
+  const v = { w: pick(EN_WORD), w2: pick(EN_WORD), k, k2: pick(KR_NOUN), k3: pick(KR_NOUN), a: pick(KR_ADJ), num: rint(1, 4), name: artist || 'Self' };
+  if (region === 'GLOBAL' && /[가-힣]/.test(fill(pat, v))) return R() < 0.5 ? pick(TITLE_EN_GLOBAL) : fill(pick(EN_PATTERN), { w: pick(EN_WORD) });
+  if (R() < 0.25) return genTitle(region, genre);
+  return fill(pat, v);
 }
 function genArtistName(region) {
   if (region === 'GLOBAL') return pick(['Lil ', 'Young ', 'DJ ', '', '', 'MC ', 'The ']) + pick(['Nova', 'Drift', 'Kane', 'Echo', 'Rome', 'Juno', 'Blaze', 'Indigo', 'Vex', 'Sable', 'Onyx', 'Wren', 'Cass', 'Reign', 'Halo']) + pick(['', '', ' Jones', ' Kid', 'X', ' Grey', ' Lane']);
@@ -192,11 +284,13 @@ function npcWeeklyReleases(t, pre) {
     if (n.debutYear > yearOf(t)) return;
     if (n.forceRelT === t) { npcRelease(n, t); n.forceRelT = null; return; }
     if (t - n.lastRelT < 10) return;
-    const p = n.region === 'GLOBAL' ? 0.032 : 0.026;
+    const p = n.region === 'GLOBAL' ? 0.032 : n.label === 'mylabel' ? 0.045 : n.rival ? 0.04 : 0.026;
     if (R() < p) {
       const rel = npcRelease(n, t);
-      if (!pre && rel && n.fame >= 55) {
-        addNews(`🆕 ${n.name}, 새 ${typeName(rel.type)} 「${rel.title}」 발매`, 'npc');
+      if (!pre && rel) {
+        if (n.label === 'mylabel') addNews(`🏷️ [${S.myLabel.name}] 소속 ${n.name}, ${typeName(rel.type)} 「${rel.title}」 발매 (평단 ${rel.critic})`, 'release');
+        else if (n.rival) addNews(`⚔️ 라이벌 ${n.name}, 새 ${typeName(rel.type)} 「${rel.title}」 발매`, 'npc');
+        else if (n.fame >= 55) addNews(`🆕 ${n.name}, 새 ${typeName(rel.type)} 「${rel.title}」 발매`, 'npc');
       }
     }
   });
@@ -214,8 +308,9 @@ function npcRelease(n, t, opts = {}) {
   const r = R();
   const type = opts.type || (r < 0.5 ? 'single' : r < 0.78 ? 'EP' : 'album');
   const lab = n.label ? labelOf(n.label) : null;
-  const critic = clamp(n.skill + rnd(-16, 12) + (lab ? lab.cred * 0.5 : 0), 25, 97);
-  const title = genTitle(n.region);
+  const critic = clamp(n.skill + rnd(-16, 12) + (lab ? lab.cred * 0.5 : 0) + (n.label === 'mylabel' ? S.myLabel.lv.studio * 2 : 0), 25, 97);
+  const songTitle = genTitle(n.region, n.genre);
+  const title = type === 'single' ? songTitle : genAlbumTitle(n.region, n.genre, n.name);
   const feats = [];
   if (opts.featPlayer) feats.push('player');
   else if (R() < 0.3) {
@@ -231,7 +326,7 @@ function npcRelease(n, t, opts = {}) {
   const rel = {
     id: uid('nr'), artistId: n.id, type, title, t, genre: n.genre, critic: Math.round(critic),
     region: n.region, feats, producer,
-    trackTitle: type === 'single' ? title : genTitle(n.region),
+    trackTitle: songTitle,
     trackCritic: Math.round(clamp(critic + rnd(-7, 7), 20, 99)),
     songId: null, total: 0, totalGlob: 0, rookie: n.debutYear === yearOf(t)
   };
@@ -253,7 +348,7 @@ function npcRelease(n, t, opts = {}) {
   S.chartSongs.push(s);
   S.npcReleases.push(rel);
   n.lastRelT = t;
-  n.fame = clamp(n.fame + (critic - 68) / 18 + rnd(-1.2, 1.2), 4, 99);
+  n.fame = clamp(n.fame + (critic - 68) / 18 + rnd(-1.2, 1.2) + (n.rival ? 1.5 : 0), 4, 99);
   return rel;
 }
 
@@ -262,7 +357,7 @@ function spawnBackgroundSongs(t) {
   const kr = rint(5, 8), gl = rint(8, 12);
   for (let i = 0; i < kr; i++) {
     const base = Math.exp(rnd(Math.log(40000), Math.log(1200000)));
-    S.chartSongs.push({ id: uid('cs'), artistId: null, artist: genArtistName('KR'), title: genTitle('KR'), domBase: base, globBase: base * 0.04, decay: rnd(0.78, 0.93), startT: t, dom: 0, glob: 0, total: 0, totalGlob: 0, feats: [], bg: true });
+    S.chartSongs.push({ id: uid('cs'), artistId: null, artist: genArtistName('KR'), title: genTitle('KR', pick(GENRES)), domBase: base, globBase: base * 0.04, decay: rnd(0.78, 0.93), startT: t, dom: 0, glob: 0, total: 0, totalGlob: 0, feats: [], bg: true });
   }
   for (let i = 0; i < gl; i++) {
     const base = Math.exp(rnd(Math.log(2e6), Math.log(3.5e7)));
@@ -332,21 +427,23 @@ function makeSong(opts) {
   if (opts.producer) {
     const pr = npc(opts.producer);
     const fee = Math.round(npcFee(pr) * 0.7 / 10000) * 10000;
-    if (R() < featChance(pr) + 0.15 && p.money >= fee) { prod = pr; money += fee; notes.push(`🎛️ ${pr.name}이(가) 프로듀싱을 맡았습니다. (${fmtMoney(fee)})`); pr.rel = clamp(pr.rel + 6, 0, 100); }
-    else notes.push(`🙅 ${pr.name}이(가) 프로듀싱 제안을 거절했습니다. 셀프 프로듀싱으로 진행합니다.`);
+    if (R() < featChance(pr) + 0.15 && p.money >= fee) { prod = pr; money += fee; notes.push(`🎛️ ${pr.name}${josa(pr.name, '이')} 프로듀싱을 맡았습니다. (${fmtMoney(fee)})`); pr.rel = clamp(pr.rel + 6, 0, 100); }
+    else notes.push(`🙅 ${pr.name}${josa(pr.name, '이')} 프로듀싱 제안을 거절했습니다. 셀프 프로듀싱으로 진행합니다.`);
   }
   // 피처링
   const feats = [];
   (opts.feats || []).filter(Boolean).slice(0, 2).forEach(fid => {
     const f = npc(fid);
-    const fee = npcFee(f);
+    const free = S.flags.mentor_free && fid === S.mentorId;
+    const fee = free ? 0 : npcFee(f);
     if (p.money - money < fee) { notes.push(`💸 ${f.name}의 피처링 비용(${fmtMoney(fee)})이 부족합니다.`); return; }
+    if (free) { S.flags.mentor_free = false; feats.push(fid); f.rel = clamp(f.rel + 10, 0, 100); notes.push(`🧔 약속대로 ${f.name}${josa(f.name, '이')} 무료로 피처링했습니다. "실망시키지 마라."`); return; }
     if (R() < featChance(f)) {
       feats.push(fid); money += fee; f.rel = clamp(f.rel + 10, 0, 100);
-      notes.push(`🤝 ${f.name}이(가) 피처링을 수락했습니다! (${fmtMoney(fee)})`);
+      notes.push(`🤝 ${f.name}${josa(f.name, '이')} 피처링을 수락했습니다! (${fmtMoney(fee)})`);
     } else {
       f.rel = clamp(f.rel - 2, 0, 100);
-      notes.push(`🙅 ${f.name}이(가) 피처링을 거절했습니다. "${pick(['요즘 스케줄이 꽉 차서요', '음악 색깔이 좀 안 맞는 것 같아요', '다음에 기회 되면 해요', '...(읽씹)', '좀 더 유명해지면 연락 주세요 ㅎ'])}"`);
+      notes.push(`🙅 ${f.name}${josa(f.name, '이')} 피처링을 거절했습니다. "${pick(['요즘 스케줄이 꽉 차서요', '음악 색깔이 좀 안 맞는 것 같아요', '다음에 기회 되면 해요', '...(읽씹)', '좀 더 유명해지면 연락 주세요 ㅎ'])}"`);
     }
   });
   const sk = p.skills;
@@ -370,6 +467,17 @@ function makeSong(opts) {
   if (prod) a.hook += 3;
   feats.forEach(fid => { const f = npc(fid); a.hook += 3 + f.skill * 0.05; a.perf += 2 + f.skill * 0.03; a.originality += 1; });
   if (opts.genre !== p.genre) a.originality += 3;
+  if (S.myLabel) { a.sound += S.myLabel.lv.studio * 2; }
+  // 영감: 스토리에서 얻은 감정이 같은 주제의 곡에 녹아든다
+  const insp = (p.inspiration || []).find(x => x.theme === th && x.until >= S.t);
+  if (insp) {
+    a.lyric += insp.bonus; a.originality += insp.bonus * 0.5; a.perf += insp.bonus * 0.3; a.hook += insp.bonus * 0.4;
+    p.inspiration = p.inspiration.filter(x => x !== insp);
+    notes.push(`💡 '${th}' 영감이 곡에 녹아들었습니다. (+${insp.bonus})`);
+  }
+  // 제목과 주제가 맞으면 곡의 인상이 선명해진다
+  const titleMatch = titleFitsTheme(opts.title, th);
+  if (titleMatch) { a.hook += 2; a.originality += 1; }
   Object.keys(a).forEach(k => a[k] = Math.round(clamp(a[k], 1, 100)));
   const quality = Math.round(a.lyric * 0.24 + a.sound * 0.24 + a.hook * 0.2 + a.originality * 0.14 + a.perf * 0.18);
   const s = {
@@ -378,6 +486,7 @@ function makeSong(opts) {
     startT: null, domBase: 0, globBase: 0, decay: 0.85, boost: 0,
     dom: 0, glob: 0, totalDom: 0, totalGlob: 0, peakMelon: null, peakHot: null, critic: null, role: null
   };
+  s.note = songNote(s, titleMatch);
   S.songs.push(s);
   p.money -= money;
   S.ap -= apCost;
@@ -394,8 +503,32 @@ function makeSong(opts) {
 
 function renameSong(id, title) {
   const s = song(id); if (!s || !title.trim()) return;
-  s.title = title.trim(); save();
+  s.title = title.trim(); s.note = songNote(s, titleFitsTheme(s.title, s.theme)); save();
 }
+
+function titleFitsTheme(title, theme) {
+  const t = String(title).toLowerCase();
+  return (THEME_KEYWORDS[theme] || []).some(k => t.includes(k.toLowerCase()));
+}
+
+/* 완성된 곡을 직접 판단해 작업 노트를 쓴다 */
+function songNote(s, titleMatch) {
+  const g = grade(s.quality);
+  const v = Object.assign(storyVars(), { t: s.title });
+  const ks = Object.keys(s.attrs);
+  const best = ks.reduce((a, b) => s.attrs[a] >= s.attrs[b] ? a : b);
+  const worst = ks.reduce((a, b) => s.attrs[a] <= s.attrs[b] ? a : b);
+  const out = [fill(pick(SONG_NOTE.grade[g]), v), s.attrs[best] >= 62 ? pick(SONG_NOTE.best[best]) : SONG_NOTE.bestMeh[best]];
+  if (s.attrs[worst] < 60 && worst !== best) out.push(pick(SONG_NOTE.weak[worst]));
+  if (titleMatch) out.push(fill(pick(SONG_NOTE.titleMatch), v));
+  else if (/^[\x00-\x7F]+$/.test(s.title)) out.push(pick(SONG_NOTE.titleEnglish));
+  else if (s.title.length > 14) out.push(pick(SONG_NOTE.titleLong));
+  else if (s.title.length <= 2) out.push(pick(SONG_NOTE.titleShort));
+  if (s.feats.length) out.push(`${s.feats.map(artistName).join(', ')}의 참여로 곡에 새로운 색이 더해졌다.`);
+  out.push('엔지니어: ' + fill(pick(SONG_NOTE.engineer[g]), v));
+  return out;
+}
+function grade(q) { return q >= 85 ? 'S' : q >= 75 ? 'A' : q >= 63 ? 'B' : q >= 50 ? 'C' : 'D'; }
 function deleteSong(id) {
   const s = song(id); if (!s || s.releaseId) return;
   S.songs = S.songs.filter(x => x.id !== id); save();
@@ -412,10 +545,10 @@ const PROMO_OPTIONS = [
   { cost: 100000000, mult: 2.8, label: '대규모 캠페인 (1억원)' }
 ];
 
-function typeName(t) { return { single: '싱글', EP: 'EP', album: '정규 앨범', compilation: '컴필레이션' }[t] || t; }
+function typeName(t) { return { single: '싱글', EP: 'EP', album: '정규 앨범', compilation: '컴필레이션', mixtape: '믹스테이프' }[t] || t; }
 
 function releaseRules(type) {
-  return { single: [1, 3], EP: [3, 7], album: [8, 25], compilation: [1, 3] }[type];
+  return { single: [1, 3], EP: [3, 7], album: [8, 25], compilation: [1, 3], mixtape: [1, 15] }[type];
 }
 
 function computeCohesion(tracks, concept, type) {
@@ -447,27 +580,87 @@ function displayScore(outlet, s100) {
   return { text: `${v}/10`, value: v };
 }
 
-function writeReview(outlet, s100, attrs, cohesion, tracks, rel) {
+function writeReview(outlet, s100, attrs, coh, tracks, rel) {
   const p = S.player;
   const tier = s100 >= 82 ? 'great' : s100 >= 68 ? 'good' : s100 >= 52 ? 'mid' : 'bad';
+  const titleT = tracks.find(t => t.id === rel.titleTrackId) || tracks[0];
+  const sorted = tracks.slice().sort((x, y) => y.quality - x.quality);
+  const best = sorted[0], worst = sorted[sorted.length - 1];
+  const n = tracks.length;
+  const tc = {}; tracks.forEach(t => tc[t.theme] = (tc[t.theme] || 0) + 1);
+  const theme = Object.keys(tc).sort((x, y) => tc[y] - tc[x])[0];
+  const themeShare = tc[theme] / n;
   const ks = Object.keys(attrs);
-  const best = ks.reduce((a, b) => attrs[a] * (outlet.w[a] + 0.1) >= attrs[b] * (outlet.w[b] + 0.1) ? a : b);
-  const worst = ks.reduce((a, b) => attrs[a] <= attrs[b] ? a : b);
-  const parts = [fill(pick(REVIEW_OPEN[tier]), { stage: p.stage })];
-  parts.push(REVIEW_STRENGTH[best]);
-  if (attrs[worst] < 70 && worst !== best) parts.push(REVIEW_WEAK[worst]);
-  if (tracks.length > 2) {
-    parts.push(cohesion >= 72 ? REVIEW_COH.high : cohesion < 55 ? REVIEW_COH.low : '');
-    const top = tracks.slice().sort((a, b) => b.quality - a.quality)[0];
-    parts.push(`「${top.title}」은(는) 이 작품의 정점이다.`);
-    const fr = tracks.filter(s => s.feats.length).length / tracks.length;
-    if (fr > 0.5) parts.push('피처링 게스트가 지나치게 많아 주인공의 목소리가 희미해진다.');
-  } else if (tracks[0].feats.length) {
-    parts.push(`${tracks[0].feats.map(artistName).join(', ')}의 참여가 곡에 새로운 색을 입혔다.`);
+  const strong = ks.reduce((x, y) => attrs[x] * (outlet.w[x] + 0.1) >= attrs[y] * (outlet.w[y] + 0.1) ? x : y);
+  const weak = ks.reduce((x, y) => attrs[x] <= attrs[y] ? x : y);
+  const bestAttr = Object.keys(best.attrs).reduce((x, y) => best.attrs[x] >= best.attrs[y] ? x : y);
+  const featTrack = tracks.find(t => t.feats.length);
+  const v = { stage: p.stage, album: rel.title, title: titleT.title, best: best.title, worst: worst.title, n, themePhrase: THEME_PHRASE[theme] };
+  const F = arr => fill(pick(arr), v);
+  const multi = n > 1;
+
+  if (outlet.voice === 'en') {
+    const out = [F(RV_EN.open[tier])];
+    out.push(fill(RV_EN.title[titleT.quality >= 72 ? rint(0, 1) : 2], v));
+    if (multi && best !== titleT && best.quality >= 65) out.push(F(RV_EN.best));
+    if (n >= 4 && best.quality - worst.quality >= 10) out.push(F(RV_EN.worst));
+    if (themeShare >= 0.5) out.push(fill(pick(RV_EN.theme), { themePhrase: THEME_PHRASE_EN[theme] }));
+    if (featTrack) out.push(fill(pick(RV_EN.feat), { feat: artistName(featTrack.feats[0]), track: featTrack.title }));
+    out.push(F(RV_EN.close[tier]));
+    return out.join(' ');
   }
-  if (outlet.id === 'rhythmer' && p.cred < -5) parts.push('다만 방송과 자본의 그림자가 음악의 진정성을 의심하게 만든다.');
-  if (outlet.id === 'pitchfork') parts.push(pick(['A thrilling document of where Korean music is heading.', 'It is ambitious, sometimes overwhelming, and often brilliant.', 'There are flashes of brilliance buried under too many ideas.', 'An uneven but undeniably personal record.']));
-  return parts.filter(Boolean).join(' ');
+  if (outlet.voice === 'casual') {
+    const out = [F(RV_CASUAL.open[tier]), F(titleT.quality >= 60 && titleT.attrs.hook >= 55 ? RV_CASUAL.title : RV_CASUAL.titleBad)];
+    if (multi && best !== titleT && best.quality >= 62) out.push(F(RV_CASUAL.best));
+    if (n >= 4 && best.quality - worst.quality >= 12) out.push(F(RV_CASUAL.worst));
+    out.push(fill(pick(RV_CASUAL.close), { verdict: fill(RV_CASUAL.verdict[tier], v) }));
+    return out.join(' ');
+  }
+
+  // 정식 평론: 후보 문장을 우선순위와 함께 모은 뒤 5~7문장으로 엮는다
+  const mid = [];
+  const add = (prio, text) => { if (text) mid.push({ prio: prio + R() * 0.5, text }); };
+  if (rel.type === 'single') add(3, F(RV.single));
+  if (multi) {
+    const same = tracks.find(t => t.title.trim() === rel.title.trim());
+    if (same) add(3, fill(pick(RV.albumTitle.same), Object.assign({ same: same.title }, v)));
+    else if (titleFitsTheme(rel.title, theme)) add(2.5, F(RV.albumTitle.theme));
+    else if (/^[\x00-\x7F]+$/.test(rel.title)) add(1.5, F(RV.albumTitle.english));
+    else if (rel.title.length > 14) add(1.2, F(RV.albumTitle.long));
+    else if (rel.title.length <= 3) add(1.2, F(RV.albumTitle.short));
+    else if (R() < 0.35) add(1, F(RV.albumTitle.themeMiss));
+    const tq = titleT.quality >= 75 ? 'high' : titleT.quality >= 58 || best === titleT ? 'mid' : 'low';
+    add(3, F(RV.titleTrack[tq]));
+    if (n >= 3 && best !== titleT) add(2.6, best.quality >= 65 ? F(RV.best) + ' ' + RV.bestWhy[bestAttr] : F(RV.bestMeh));
+    if (n >= 4 && best.quality - worst.quality >= 10) add(2.4, F(RV.worst));
+    if (n >= 5) {
+      const h = Math.floor(n / 2);
+      const f = avg(tracks.slice(0, h).map(t => t.quality)), b = avg(tracks.slice(h).map(t => t.quality));
+      add(1.6, F(f - b > 5 ? RV.flow.front : b - f > 5 ? RV.flow.back : RV.flow.even));
+    }
+    add(1.4, coh >= 72 ? F(RV.coh.high) : coh < 55 ? F(RV.coh.low) : '');
+    if (rel.type === 'album' && n > 16) add(2.2, F(RV.lengthLong));
+    if (rel.type === 'EP' && n <= 4) add(1, F(RV.lengthShort));
+    const intro = /intro|인트로/i.test(tracks[0].title) ? tracks[0].title : null;
+    const outro = /outro|아웃트로/i.test(tracks[n - 1].title) ? tracks[n - 1].title : null;
+    if (intro && outro) add(2, fill(pick(RV.introOutro), { intro, outro }));
+    else if (intro) add(1.2, fill(pick(RV.intro), { intro }));
+    const fr = tracks.filter(t => t.feats.length).length / n;
+    if (fr > 0.5) add(2.3, F(RV.featOverload));
+  }
+  if (featTrack && (!multi || tracks.filter(t => t.feats.length).length / n <= 0.5)) {
+    const fa = npc(featTrack.feats[0]);
+    const good = fa.skill >= 74 && featTrack.quality >= 62;
+    add(1.5, fill(pick(good ? RV.featGood : RV.featBad), { feat: fa.name, track: featTrack.title }));
+  }
+  if (themeShare >= 0.5) add(1.8, THEME_LINE[theme][attrs.lyric >= 68 ? 0 : 1]);
+  if (attrs[strong] >= 62) add(2, pick(RV.strength[strong]));
+  if (attrs[weak] < 65 && weak !== strong) add(2, pick(RV.weak[weak]));
+  if (rel.type === 'mixtape') add(2.5, F(RV.mixtape));
+  if (outlet.credWeight >= 0.5 && p.cred < -5) add(2.2, pick(RV.credLow));
+  if (outlet.credWeight >= 0.5 && p.cred > 10) add(1.2, pick(RV.credHigh));
+  const body = mid.sort((x, y) => y.prio - x.prio).slice(0, outlet.id === 'izm' ? 4 : 5).map(x => x.text);
+  return [F(RV.open[tier])].concat(body, [F(RV.close[tier])]).join(' ');
 }
 
 function reviewRelease(rel, tracks) {
@@ -488,6 +681,7 @@ function reviewRelease(rel, tracks) {
     }
     if (o.minFame && p.fame < o.minFame && R() < 0.6) return;
     if (rel.type === 'single' && o.id !== 'wave' && R() < 0.35) return; // 싱글은 종종 리뷰 안 함
+    if (rel.type === 'mixtape' && (o.id === 'wave' || o.id === 'pitchfork' || (o.id === 'izm' && R() < 0.5))) return; // 믹스테이프는 웹진 위주
     let raw = sum(Object.keys(o.w).map(k => o.w[k] * attrs[k]));
     const cw = rel.type === 'single' ? o.coh * 0.4 : o.coh;
     let s = raw * (1 - cw) + coh * cw + o.bias + p.cred * o.credWeight + rnd(-6, 6);
@@ -521,8 +715,9 @@ function releaseWork(opts) {
   const [mn, mx] = releaseRules(opts.type);
   const tracks = opts.trackIds.map(song).filter(Boolean);
   if (!opts.title || !opts.title.trim()) return { ok: false, msg: '작품 제목을 입력하세요.' };
-  if (tracks.length < mn || tracks.length > mx) return { ok: false, msg: `${typeName(opts.type)}은(는) ${mn}~${mx}곡이어야 합니다.` };
+  if (tracks.length < mn || tracks.length > mx) return { ok: false, msg: `${typeName(opts.type)}${josa(typeName(opts.type), '은')} ${mn}~${mx}곡이어야 합니다.` };
   if (tracks.some(s => s.releaseId)) return { ok: false, msg: '이미 발매된 곡이 포함되어 있습니다.' };
+  if (opts.type === 'mixtape') opts.promo = 0;
   const promo = PROMO_OPTIONS[opts.promo || 0];
   if (p.money < promo.cost) return { ok: false, msg: '홍보 예산이 부족합니다.' };
   p.money -= promo.cost;
@@ -534,7 +729,7 @@ function releaseWork(opts) {
     id: uid('r'), type: opts.type, title: opts.title.trim(), trackIds: tracks.map(s => s.id),
     titleTrackId: opts.titleTrackId && opts.trackIds.includes(opts.titleTrackId) ? opts.titleTrackId : tracks[0].id,
     t: S.t, cover: opts.cover || { c1: '#7c3aed', c2: '#ec4899', emoji: '🎵' }, concept: opts.concept || '',
-    genre, label: p.label, promo: opts.promo || 0, cohesion: 0, reviews: [], critic: 0,
+    genre, label: p.label || (S.myLabel ? 'mylabel' : null), promo: opts.promo || 0, cohesion: 0, reviews: [], critic: 0,
     peakBB200: null, compMembers: opts.compMembers || null, extraTracks: opts.extraTracks || []
   };
   rel.cohesion = computeCohesion(tracks, rel.concept, opts.type);
@@ -542,9 +737,9 @@ function releaseWork(opts) {
   S.releases.push(rel);
 
   // 스트리밍 기반값 설정
-  const lab = p.label ? labelOf(p.label) : null;
+  const lab = myActiveLabel();
   const labPromo = lab ? lab.promo : 1;
-  const hype = 1 + p.hype / 100;
+  const hype = (1 + p.hype / 100) * (opts.type === 'mixtape' ? 0.45 : 1);
   // 너무 자주 발매하면 관심이 분산된다
   const recent = S.releases.filter(r => r.id !== rel.id && S.t - r.t < 10 && r.type !== 'compilation').length;
   const fatigue = 1 / (1 + 0.45 * recent);
@@ -570,16 +765,22 @@ function releaseWork(opts) {
     if (R() < 0.025 + s.attrs.hook / 2500 + (isTitle ? 0.01 : 0)) {
       const m = rnd(2.2, 5);
       s.domBase *= m; s.globBase *= m * 1.2;
-      notes.push(`🔥 「${s.title}」이(가) 숏폼 챌린지로 바이럴되고 있습니다!`);
+      notes.push(`🔥 「${s.title}」${josa(s.title, '이')} 숏폼 챌린지로 바이럴되고 있습니다!`);
       addNews(`🔥 ${p.stage}의 「${s.title}」, 숏폼 챌린지 열풍`, 'good');
       p.buzz += 12;
     }
     s.decay = clamp(0.78 + s.attrs.hook * 0.0012 + s.quality * 0.0007 - (isTitle ? 0 : 0.03), 0.72, 0.935);
     s.startT = S.t + 1;
     s.releaseId = rel.id;
+    if (opts.type === 'mixtape') s.free = true; // 무료 공개: 수익/차트 없음
   });
   p.hype = 0;
-  if (!p.debutT) { p.debutT = S.t; addMilestone('debut', `데뷔작 「${rel.title}」 발매`); }
+  if (!p.debutT) {
+    p.debutT = S.t; addMilestone('debut', `데뷔작 「${rel.title}」 발매`);
+    addStory(`${p.stage}의 데뷔작 『${rel.title}』${josa(rel.title, '이')} 세상에 나왔다. 타이틀곡은 「${song(rel.titleTrackId).title}」. 평단 지수 ${rel.critic}.`, 'release');
+  } else if (opts.type === 'album' || opts.type === 'EP') {
+    addStory(`${typeName(opts.type)} 『${rel.title}』 발매. ${rel.critic >= 80 ? '평단의 찬사가 쏟아졌다.' : rel.critic >= 67 ? '좋은 평가를 받았다.' : rel.critic >= 52 ? '반응은 미지근했다.' : '혹평이 쏟아졌다.'}`, 'release');
+  }
   p.lastReleaseT = S.t;
   if (p.contract) p.contract.released += opts.type === 'single' || opts.type === 'compilation' ? 0.5 : 1;
 
@@ -587,7 +788,9 @@ function releaseWork(opts) {
   const c = rel.critic;
   const tier = c >= 80 ? 'release_great' : c >= 67 ? 'release_good' : c >= 52 ? 'release_mid' : 'release_bad';
   const titleSong = song(rel.titleTrackId);
-  const vars = { title: rel.title };
+  const sortedQ = tracks.slice().sort((a, b) => b.quality - a.quality);
+  const vars = { title: rel.title, album: rel.title, titleTrack: titleSong.title, best: sortedQ[0].title, worst: sortedQ[sortedQ.length - 1].title };
+  S.lastRelCritic = rel.critic;
   react(tier, rint(6, 9), vars, { src: rel.id });
   if (prevRel && prevRel.genre !== genre) react('genre_change', 3, vars, { src: rel.id });
   const feats = [...new Set(tracks.flatMap(s => s.feats))];
@@ -597,6 +800,7 @@ function releaseWork(opts) {
   p.buzz += 4 + (opts.type === 'album' ? 6 : opts.type === 'EP' ? 3 : 0) + Math.max(0, c - 70) / 3;
   if (c >= 76) p.cred += 1;
   if (c >= 85) p.legacy += 1.5;
+  if (opts.type === 'mixtape') { p.cred += 1.5; p.coreRatio = clamp(p.coreRatio + 1.5, 3, 60); notes.push('🎁 무료 믹스테이프: 수익과 차트는 없지만 평단 신뢰도와 찐팬이 늘었습니다.'); }
   rel.reviews.forEach(r => { if (r.badge) addNews(`⭐ ${r.name}: ${p.stage} 「${rel.title}」 — ${r.display} (${r.badge})`, 'good'); });
   addNews(`💿 ${p.stage}, ${typeName(opts.type)} 「${rel.title}」 발매 (평단 지수 ${c})`, 'release');
 
@@ -620,6 +824,7 @@ function nextWeek() {
   S.t++;
   const t = S.t, w = weekOf(t), y = yearOf(t);
   if (w === 1) yearStart(y, summary);
+  if (p.military && t >= p.military.endT) discharge(summary);
 
   // 생활비
   const living = 250000 + Math.round(p.fame * 8000);
@@ -631,7 +836,7 @@ function nextWeek() {
   tickChartSongs(t);
 
   // 내 곡 스트리밍
-  let dom = 0, glob = 0;
+  let dom = 0, glob = 0, paidDom = 0, paidGlob = 0;
   // 활동 중인 곡이 너무 많으면 서로 스트리밍을 갉아먹는다
   const active = S.songs.filter(s => s.releaseId && s.startT <= t && t - s.startT < 30).length;
   const cannibal = active > 12 ? Math.pow(12 / active, 0.6) : 1;
@@ -643,10 +848,11 @@ function nextWeek() {
     s.totalDom += s.dom; s.totalGlob += s.glob;
     s.boost *= 0.82;
     dom += s.dom; glob += s.glob;
+    if (!s.free) { paidDom += s.dom; paidGlob += s.glob; }
     // 역주행
     if (age > 12 && s.quality >= 68 && R() < 0.003) {
       s.boost += rnd(1.5, 4);
-      summary.events.push(`📈 「${s.title}」이(가) 역주행을 시작했습니다!`);
+      summary.events.push(`📈 「${s.title}」${josa(s.title, '이')} 역주행을 시작했습니다!`);
       addNews(`📈 ${p.stage}의 「${s.title}」, 발매 ${age}주 만에 역주행`, 'good');
       p.buzz += 8;
     }
@@ -655,9 +861,10 @@ function nextWeek() {
   let featDom = 0, featGlob = 0;
   S.chartSongs.forEach(cs => { if (cs.feats && cs.feats.includes('player')) { featDom += cs.dom; featGlob += cs.glob; } });
   p.weeklyDom = dom; p.weeklyGlob = glob;
-  const share = p.label ? labelOf(p.label).share : 0.9;
-  const income = Math.round((dom * 4.5 + glob * 5) * share);
+  const share = p.label ? labelOf(p.label).share : S.myLabel ? 1 : 0.9;
+  const income = Math.round((paidDom * 4.5 + paidGlob * 5) * share);
   p.money += income; summary.income += income; p.totalEarned += income;
+  if (S.myLabel) myLabelWeekly(summary);
   summary.dom = dom; summary.glob = glob; summary.featDom = featDom;
 
   // 인지도 / 팔로워
@@ -692,6 +899,10 @@ function nextWeek() {
   // 멘탈
   p.mental = clamp(p.mental + 4 - p.antiRatio * 0.12 * (p.fame / 50) - (p.money < 0 ? 6 : 0), 0, 100);
 
+  // 라이벌은 늘 비슷한 위치에서 경쟁한다
+  const rv = S.rivalId && npc(S.rivalId);
+  if (rv && rv.debutYear <= y) rv.fame = clamp(rv.fame + (p.fame * rnd(0.85, 1.12) - rv.fame) * 0.03, 4, 97);
+
   // 레이블 계약
   labelWeekly(summary);
   // 크루 친밀도
@@ -708,24 +919,28 @@ function nextWeek() {
   });
   if (w === 51) yearEndLists(y, summary);
 
-  // 랜덤 이벤트
-  randomEvents(summary);
+  // 랜덤 이벤트 & 스토리
+  if (!p.military) { randomEvents(summary); storyEvents(summary); }
+  checkChapter(summary);
+  checkGoals(summary);
   // 소식함 만료
   S.inbox = S.inbox.filter(m => {
+    if (m.expires && m.expires < t && m.type === 'story') { S.flags.doubtNow = false; S.flags.slumpNow = false; return false; }
     if (m.expires && m.expires < t) { if (m.type === 'diss') { p.sentiment -= 3; addNews(`😶 ${p.stage}, ${m.data.npcName}의 디스에 침묵… 커뮤니티 "쫄았네"`, 'bad'); } return false; }
     return true;
   });
   if (p.dissTarget && t > p.dissDeadline) { p.dissTarget = null; }
 
   // 행동력
-  S.ap = p.burnout ? 1 : 3;
+  S.ap = p.military ? 0 : p.burnout ? 1 : 3;
   if (p.burnout) { summary.events.push('🥀 번아웃으로 이번 주는 행동력이 1밖에 없습니다.'); p.burnout = false; }
   if (p.mental < 12) {
     p.burnout = true; p.mental = 35;
     summary.events.push('😵 번아웃이 왔습니다… 다음 주는 거의 쉬어야 합니다.');
     addNews(`${p.stage}, 건강 문제로 활동 잠정 중단설`, 'bad');
   }
-  S.postsLeft = 3;
+  S.postsLeft = p.military ? 0 : 3;
+  if (p.military) p.mental = clamp(p.mental + 2, 0, 100);
   if (p.money < -10000000 && R() < 0.3) summary.events.push('💳 빚이 쌓이고 있습니다. 공연이나 아르바이트로 돈을 벌어야 합니다.');
 
   summary.followersDelta = totalFollowers() - before.followers;
@@ -746,19 +961,7 @@ function yearStart(y, summary) {
   p.age++;
   summary.events.push(`🎆 ${y}년이 밝았습니다. ${p.stage}, ${p.age}세.`);
   // 신인 생성
-  const nk = rint(3, 4), ng = rint(1, 2);
-  for (let i = 0; i < nk + ng; i++) {
-    const region = i < nk ? 'KR' : 'GLOBAL';
-    const n = mkNpc({
-      name: genArtistName(region) + (region === 'KR' && R() < 0.3 ? ' ' + pick(['', 'Jr.', '2']) : ''),
-      genre: pick(region === 'KR' ? ['힙합', '힙합', '힙합', 'R&B', 'R&B', '인디', '팝', '록', '일렉트로닉'] : ['힙합', 'R&B', '팝', '인디']),
-      fame: region === 'KR' ? rint(5, 25) : rint(40, 70), skill: rint(55, 88), trait: pick(['감성적', '유쾌함', '허세', '장인', '신비주의', '독설가'])
-    }, region);
-    n.name = n.name.trim();
-    if (S.npcs.find(x => x.name === n.name)) n.name += ' ' + pick(['K', 'J', 'Z', '2']);
-    n.debutYear = y; n.forceRelT = S.t + rint(2, 40);
-    S.npcs.push(n);
-  }
+  spawnRookies(y, rint(3, 4), rint(1, 2));
   addNews(`🌱 ${y}년, 주목할 신인들: ${S.npcs.filter(n => n.debutYear === y && n.region === 'KR').map(n => n.name).join(', ')}`, 'npc');
   // 레이블 할당량 체크
   if (p.contract && S.t - p.contract.startT > 40) {
@@ -767,7 +970,7 @@ function yearStart(y, summary) {
       p.contract.misses++;
       if (p.contract.misses >= 2) {
         addNews(`📉 ${lab.name}, 작업물 부족을 이유로 ${p.stage}와 계약 해지`, 'bad');
-        summary.events.push(`📉 ${lab.name}이(가) 계약을 해지했습니다. (연간 발매 의무 미달)`);
+        summary.events.push(`📉 ${lab.name}${josa(lab.name, '이')} 계약을 해지했습니다. (연간 발매 의무 미달)`);
         p.label = null; p.contract = null; p.sentiment -= 4;
       } else {
         summary.events.push(`⚠️ ${lab.name}: "작년 발매량이 계약 조건(${lab.quota}장)에 못 미칩니다. 올해도 이러면 계약을 해지합니다."`);
@@ -825,7 +1028,7 @@ function computeCharts(silent) {
   const meta = S.chartMeta;
   const entries = [];
   S.chartSongs.forEach(s => entries.push({ key: s.id, title: s.title, artist: songArtistLabel(s, false), dom: s.dom, glob: s.glob, isPlayer: false, featPlayer: s.feats && s.feats.includes('player'), ref: s }));
-  S.songs.forEach(s => { if (s.releaseId && s.startT <= S.t) entries.push({ key: s.id, title: s.title, artist: songArtistLabel(s, true), dom: s.dom, glob: s.glob, isPlayer: true, ref: s }); });
+  S.songs.forEach(s => { if (s.releaseId && !s.free && s.startT <= S.t) entries.push({ key: s.id, title: s.title, artist: songArtistLabel(s, true), dom: s.dom, glob: s.glob, isPlayer: true, ref: s }); });
 
   const build = (name, field, limit, floor) => {
     const list = entries.filter(e => e[field] >= floor).sort((a, b) => b[field] - a[field]).slice(0, limit);
@@ -854,7 +1057,7 @@ function computeCharts(silent) {
     if (cs.bg && cs.albumMult) albums.push({ key: 'bga' + cs.id, title: cs.title + (cs.albumMult > 1.5 ? '' : ' (Deluxe)'), artist: cs.artist, value: cs.glob * cs.albumMult / 1250, isPlayer: false });
   });
   S.releases.forEach(r => {
-    if (r.type === 'single') return;
+    if (r.type === 'single' || r.type === 'mixtape') return;
     const tr = r.trackIds.map(song);
     if (tr[0].startT > S.t) return;
     const age = S.t - tr[0].startT;
@@ -974,7 +1177,7 @@ function awardCandidates(a, cat, eligYear) {
     npcRels.filter(r => r.type !== 'single' && genreOk(r.genre)).forEach(r => {
       out.push({ label: `「${r.title}」 — ${artistName(r.artistId)}`, score: score(r.critic, pop(region === 'GLOBAL' ? r.totalGlob : r.total), false), isPlayer: false, artist: r.artistId });
     });
-    myRels.filter(r => r.type !== 'single' && genreOk(r.genre)).forEach(r => {
+    myRels.filter(r => r.type !== 'single' && (r.type !== 'mixtape' || a.outlet === 'rhythmer') && genreOk(r.genre)).forEach(r => {
       out.push({ label: `「${r.title}」 — ${p.stage}`, score: score(myCritic(r), pop(playerRelStreams(r, region)), true), isPlayer: true, title: r.title });
     });
   } else if (cat.type === 'track' || cat.type === 'collab') {
@@ -1057,6 +1260,7 @@ function holdCeremony(a, y, summary) {
   c.cats.forEach(cat => {
     const w = cat.nominees.map(n => ({ n, v: n.score + rnd(-4, 4) })).sort((x, z) => z.v - x.v)[0].n;
     cat.winner = w.label;
+    if (w.artist) S.npcWins[w.artist] = (S.npcWins[w.artist] || 0) + 1;
     const mine = cat.nominees.filter(n => n.isPlayer);
     mine.forEach(n => {
       const nom = S.nominations.find(x => x.award === a.name && x.year === y && x.cat === cat.name && x.label === n.label);
@@ -1203,7 +1407,7 @@ function actBond(id) {
   n.rel = clamp(n.rel + g, 0, 100);
   const how = pick(['작업실에 놀러 갔다', 'DM으로 대화를 나눴다', '같이 술 한잔했다', '공연 뒤풀이에서 만났다', '같이 비트를 들으며 밤을 새웠다']);
   save();
-  return { ok: true, msg: `${n.name}와(과) ${how}. 친밀도 ${g >= 0 ? '+' : ''}${g.toFixed(0)} (현재 ${Math.round(n.rel)})` };
+  return { ok: true, msg: `${n.name}${josa(n.name, '과')} ${how}. 친밀도 ${g >= 0 ? '+' : ''}${g.toFixed(0)} (현재 ${Math.round(n.rel)})` };
 }
 
 /* =========================================================
@@ -1275,7 +1479,7 @@ function makePost({ platform, type, text, songId, targetId, budget }) {
     n.rel = clamp(n.rel - 30, 0, 100); p.buzz += 8 + n.fame / 10; p.antiRatio = clamp(p.antiRatio + 1, 0, 45);
     addNews(`⚔️ ${p.stage}, SNS로 ${n.name} 저격 "${body.slice(0, 30) || '…'}"`, 'bad');
     if (R() < 0.45 + (n.trait === '독설가' || n.trait === '허세' ? 0.25 : 0)) {
-      notes.push(`🔥 ${n.name}이(가) 디스곡으로 응수할 예정이라는 소문이 돕니다…`);
+      notes.push(`🔥 ${n.name}${josa(n.name, '이')} 디스곡으로 응수할 예정이라는 소문이 돕니다…`);
       scheduleDiss(n, 'response');
     }
   }
@@ -1321,10 +1525,10 @@ function labelWeekly(summary) {
   if (p.contract && S.t >= p.contract.endT) {
     const lab = labelOf(p.label);
     addInbox({
-      type: 'renew', title: `📝 ${lab.name} 재계약 제안`, text: `계약 기간이 끝났습니다. ${lab.name}이(가) 재계약을 제안합니다. 계약금 ${fmtMoney(Math.round(lab.advance * (0.4 + p.fame / 120)))}.`,
+      type: 'renew', title: `📝 ${lab.name} 재계약 제안`, text: `계약 기간이 끝났습니다. ${lab.name}${josa(lab.name, '이')} 재계약을 제안합니다. 계약금 ${fmtMoney(Math.round(lab.advance * (0.4 + p.fame / 120)))}.`,
       data: { labelId: lab.id }, expires: S.t + 3
     });
-    summary.events.push(`📝 ${lab.name}과(와)의 계약이 만료되었습니다.`);
+    summary.events.push(`📝 ${lab.name}${josa(lab.name, '과')}의 계약이 만료되었습니다.`);
     p.label = null; p.contract = null;
   }
 }
@@ -1349,11 +1553,11 @@ function signLabel(labelId, advance) {
   if (lab.global) p.gLegacy += lab.global * 15;
   // 같은 레이블 아티스트와 친밀도
   S.npcs.filter(n => n.label === lab.id).forEach(n => n.rel = clamp(n.rel + 8, 0, 100));
-  addNews(`✍️ ${p.stage}, ${lab.name}과(와) 전속 계약 체결 (계약금 ${fmtMoney(advance)})`, 'good');
+  addNews(`✍️ ${p.stage}, ${lab.name}${josa(lab.name, '과')} 전속 계약 체결 (계약금 ${fmtMoney(advance)})`, 'good');
   react(['메이저', '대형기획사', '글로벌'].includes(lab.tier) ? 'label_major' : 'label_indie', 5, { npc: lab.name });
   addMilestone('label_' + lab.tier, `${lab.tier} 레이블 계약 (${lab.name})`);
   save();
-  return { ok: true, msg: `${lab.name}과(와) 계약했습니다! 계약금 ${fmtMoney(advance)} 입금.` };
+  return { ok: true, msg: `${lab.name}${josa(lab.name, '과')} 계약했습니다! 계약금 ${fmtMoney(advance)} 입금.` };
 }
 
 function buyoutCost() {
@@ -1369,10 +1573,10 @@ function leaveLabel() {
   if (p.money < cost) return { ok: false, msg: `위약금 ${fmtMoney(cost)}이 부족합니다.` };
   const lab = labelOf(p.label);
   p.money -= cost; p.label = null; p.contract = null;
-  addNews(`🚪 ${p.stage}, ${lab.name}과(와) 결별 (위약금 ${fmtMoney(cost)})`, 'bad');
+  addNews(`🚪 ${p.stage}, ${lab.name}${josa(lab.name, '과')} 결별 (위약금 ${fmtMoney(cost)})`, 'bad');
   react('label_indie', 3, { npc: lab.name }, { weights: { old: 2 } });
   save();
-  return { ok: true, msg: `${lab.name}을(를) 떠났습니다. 위약금 ${fmtMoney(cost)}` };
+  return { ok: true, msg: `${lab.name}${josa(lab.name, '을')} 떠났습니다. 위약금 ${fmtMoney(cost)}` };
 }
 
 function joinCrew(cid) {
@@ -1394,7 +1598,7 @@ function leaveCrew() {
   crewMembers(p.crew).forEach(n => n.rel = clamp(n.rel - 15, 0, 100));
   addNews(`💔 ${p.stage}, 크루 '${c.name}' 탈퇴`, 'bad');
   p.crew = null; save();
-  return { ok: true, msg: `'${c.name}'을(를) 탈퇴했습니다.` };
+  return { ok: true, msg: `'${c.name}'${josa(c.name, '을')} 탈퇴했습니다.` };
 }
 function foundCrew(name) {
   const p = S.player;
@@ -1403,13 +1607,13 @@ function foundCrew(name) {
   if (p.money < 3000000) return { ok: false, msg: '크루 설립 비용 300만원이 필요합니다.' };
   if (!name || !name.trim()) return { ok: false, msg: '크루 이름을 입력하세요.' };
   p.money -= 3000000;
-  const c = { id: uid('crew'), name: name.trim(), vibe: `${p.stage}이(가) 이끄는 크루`, cred: 2, own: true };
+  const c = { id: uid('crew'), name: name.trim(), vibe: `${p.stage}${josa(p.stage, '이')} 이끄는 크루`, cred: 2, own: true };
   S.crews.push(c); p.crew = c.id;
   addNews(`🚩 ${p.stage}, 새 크루 '${c.name}' 설립`, 'good');
   react('crew_join', 3, { npc: c.name });
   addMilestone('own_crew', `크루 '${c.name}' 설립`);
   save();
-  return { ok: true, msg: `크루 '${c.name}'을(를) 만들었습니다! 친밀도 55 이상의 아티스트를 영입해 보세요.` };
+  return { ok: true, msg: `크루 '${c.name}'${josa(c.name, '을')} 만들었습니다! 친밀도 55 이상의 아티스트를 영입해 보세요.` };
 }
 function disbandCrew() {
   const p = S.player; const c = p.crew && crewOf(p.crew);
@@ -1439,22 +1643,24 @@ function recruit(id) {
     addNews(`🤝 ${n.name}, ${old ? `'${old.name}' 떠나 ` : ''}'${c.name}' 합류`, 'good');
     react('crew_join', 3, { npc: n.name });
     save();
-    return { ok: true, msg: `${n.name}이(가) '${c.name}'에 합류했습니다!` };
+    return { ok: true, msg: `${n.name}${josa(n.name, '이')} '${c.name}'에 합류했습니다!` };
   }
   n.rel = clamp(n.rel - 3, 0, 100); save();
   return { ok: true, msg: `${n.name}: "${pick(['지금 크루에 의리가 있어서…', '조금만 더 생각해볼게', '아직은 솔로가 편해', '좋은 제안인데 미안'])}" (영입 실패)` };
 }
 
 // 크루 컴필레이션
-function releaseCompilation({ title, songIds, cover, promo }) {
-  const p = S.player; const c = p.crew && crewOf(p.crew);
-  if (!c) return { ok: false, msg: '크루가 필요합니다.' };
-  const mem = crewMembers(c.id).filter(n => n.role === 'artist' || n.role === 'producer');
-  if (mem.length < 2) return { ok: false, msg: '크루 멤버가 2명 이상 필요합니다.' };
+function releaseCompilation({ title, songIds, cover, promo, source }) {
+  const p = S.player;
+  const isLabel = source === 'label';
+  const c = isLabel ? (S.myLabel ? { id: 'mylabel', name: S.myLabel.name } : null) : p.crew && crewOf(p.crew);
+  if (!c) return { ok: false, msg: isLabel ? '레이블이 필요합니다.' : '크루가 필요합니다.' };
+  const mem = isLabel ? labelRoster() : crewMembers(c.id).filter(n => n.role === 'artist' || n.role === 'producer');
+  if (mem.length < (isLabel ? 1 : 2)) return { ok: false, msg: isLabel ? '소속 아티스트가 1명 이상 필요합니다.' : '크루 멤버가 2명 이상 필요합니다.' };
   if (!songIds.length || songIds.length > 3) return { ok: false, msg: '내 곡을 1~3곡 선택하세요.' };
   const parts = mem.slice(0, 6);
-  const extra = parts.map(n => ({ title: genTitle('KR'), artist: n.name, quality: Math.round(clamp(n.skill + rnd(-10, 6), 20, 98)) }));
-  const res = releaseWork({ type: 'compilation', title, trackIds: songIds, titleTrackId: songIds[0], cover, promo, concept: `${c.name} 크루 컴필레이션`, extraTracks: extra });
+  const extra = parts.map(n => ({ title: genTitle('KR', n.genre), artist: n.name, quality: Math.round(clamp(n.skill + rnd(-10, 6), 20, 98)) }));
+  const res = releaseWork({ type: 'compilation', title, trackIds: songIds, titleTrackId: songIds[0], cover, promo, concept: `${c.name} ${isLabel ? '레이블' : '크루'} 컴필레이션`, extraTracks: extra });
   if (!res.ok) return res;
   const rel = res.release;
   rel.compName = c.name;
@@ -1469,7 +1675,7 @@ function releaseCompilation({ title, songIds, cover, promo }) {
     n.rel = clamp(n.rel + 8, 0, 100);
   });
   p.coreRatio = clamp(p.coreRatio + 1, 3, 60);
-  addNews(`📀 ${c.name} 크루 컴필레이션 「${rel.title}」 발매`, 'release');
+  addNews(`📀 ${c.name} ${isLabel ? '레이블' : '크루'} 컴필레이션 「${rel.title}」 발매`, 'release');
   save();
   return res;
 }
@@ -1480,8 +1686,8 @@ function releaseCompilation({ title, songIds, cover, promo }) {
 function scheduleDiss(n, kind) {
   const p = S.player;
   addInbox({
-    type: 'diss', title: `⚔️ ${n.name}의 디스곡 「${genTitle('KR')}」 공개`,
-    text: kind === 'response' ? `${n.name}이(가) 당신의 저격에 디스곡으로 응수했습니다. 커뮤니티가 들끓고 있습니다.` : `${n.name}이(가) 신곡에서 당신을 공개적으로 저격했습니다. "${pick(['방송 래퍼', '가사 대필 의혹', '거품 래퍼', '실력 없는 인싸', '돈만 아는 놈'])}"이라는 가사가 화제입니다.`,
+    type: 'diss', title: `⚔️ ${n.name}의 디스곡 「${pick(['참교육', '사형선고', '부고', 'Real Talk', '체급 차이', '팩트폭행', '거품', '가면무도회', '이름값', 'No Mercy'])}」 공개`,
+    text: kind === 'response' ? `${n.name}${josa(n.name, '이')} 당신의 저격에 디스곡으로 응수했습니다. 커뮤니티가 들끓고 있습니다.` : `${n.name}${josa(n.name, '이')} 신곡에서 당신을 공개적으로 저격했습니다. "${pick(['방송 래퍼', '가사 대필 의혹', '거품 래퍼', '실력 없는 인싸', '돈만 아는 놈'])}"이라는 가사가 화제입니다.`,
     data: { npcId: n.id, npcName: n.name }, expires: S.t + 3
   });
   p.buzz += 6;
@@ -1502,12 +1708,12 @@ function resolveDiss(ds) {
     addNews(`🏆 디스전 결과: 커뮤니티 "${p.stage} 완승" vs ${n.name}`, 'good');
     react('diss_war', 6, { npc: n.name }, { weights: { meme: 2, critic: 2 } });
     addMilestone('diss_win', `디스전 승리 (vs ${n.name})`);
-    return `⚔️ 디스곡 「${ds.title}」이(가) ${n.name}을(를) 압도했습니다! 디스전 승리!`;
+    return `⚔️ 디스곡 「${ds.title}」${josa(ds.title, '이')} ${n.name}${josa(n.name, '을')} 압도했습니다! 디스전 승리!`;
   }
   p.buzz += 8; p.sentiment -= 4; n.fame = clamp(n.fame + 2, 4, 99);
   addNews(`😓 디스전 결과: ${n.name} 판정승, ${p.stage} 체면 구겨`, 'bad');
   react('diss_lose', 5, { npc: n.name });
-  return `😓 디스곡 「${ds.title}」이(가) ${n.name}의 공격을 넘어서지 못했습니다… 디스전 패배.`;
+  return `😓 디스곡 「${ds.title}」${josa(ds.title, '이')} ${n.name}의 공격을 넘어서지 못했습니다… 디스전 패배.`;
 }
 
 /* =========================================================
@@ -1528,7 +1734,7 @@ function randomEvents(summary) {
   if (p.debutT && R() < 0.04 + p.fame / 250 && !pending('feature')) {
     const pool = S.npcs.filter(n => n.role === 'artist' && n.debutYear <= yearOf(t) && (n.region === 'KR' || p.globalFame > 25) && p.dissTarget !== n.id);
     const n = weightedPick(pool, x => (1 + x.rel / 20) * (Math.abs(x.fame - p.fame) < 25 ? 3 : 1) * (x.crew && x.crew === p.crew ? 3 : 1));
-    if (n) addInbox({ type: 'feature', title: `🎙️ ${n.name}의 피처링 요청`, text: `${n.name}(${n.genre}, 인지도 ${Math.round(n.fame)})이(가) 신곡 피처링을 요청했습니다. 보수 ${fmtMoney(Math.round(playerFee() * 0.6 / 10000) * 10000)}. (행동력 1 소모)`, data: { npcId: n.id, fee: Math.round(playerFee() * 0.6 / 10000) * 10000 }, expires: t + 2 });
+    if (n) addInbox({ type: 'feature', title: `🎙️ ${n.name}의 피처링 요청`, text: `${n.name}(${n.genre}, 인지도 ${Math.round(n.fame)})${josa(n.name, '이')} 신곡 피처링을 요청했습니다. 보수 ${fmtMoney(Math.round(playerFee() * 0.6 / 10000) * 10000)}. (행동력 1 소모)`, data: { npcId: n.id, fee: Math.round(playerFee() * 0.6 / 10000) * 10000 }, expires: t + 2 });
   }
   // 공연 제안
   if (R() < 0.07 + p.fame / 220 && !pending('gig')) {
@@ -1537,7 +1743,7 @@ function randomEvents(summary) {
     addInbox({ type: 'gig', title: `🎪 공연 섭외: ${name}`, text: `${name}에서 섭외가 왔습니다. 출연료 ${fmtMoney(pay)}. (행동력 1 소모)`, data: { name, pay }, expires: t + 2 });
   }
   // 레이블 제안
-  if (!p.label && R() < 0.1 && !pending('label')) {
+  if (!p.label && !S.myLabel && R() < 0.1 && !pending('label')) {
     const cand = LABELS.filter(l => labelEligible(l) && !(S.cooldowns['lab_' + l.id] > t));
     if (cand.length) {
       const lab = weightedPick(cand, l => (l.genres.includes(p.genre) ? 3 : 1) * (1 + l.minFame / 30));
@@ -1586,12 +1792,13 @@ function randomEvents(summary) {
     p.sentiment -= 8; p.antiRatio = clamp(p.antiRatio + 3, 0, 45); p.mental -= 10;
     addNews(`🚨 ${p.stage}, ${what} 휩싸여`, 'bad');
     react('scandal', 5);
-    addInbox({ type: 'scandal', title: `🚨 논란 발생: ${what}`, text: `${what}이(가) 커뮤니티에서 확산 중입니다. 어떻게 대응할까요?`, data: { what }, expires: t + 2 });
+    addInbox({ type: 'scandal', title: `🚨 논란 발생: ${what}`, text: `${what}${josa(what, '이')} 커뮤니티에서 확산 중입니다. 어떻게 대응할까요?`, data: { what }, expires: t + 2 });
   }
   // NPC 끼리 소식
-  if (R() < 0.08) {
-    const n = pick(S.npcs.filter(x => x.region === 'KR' && x.role === 'artist'));
-    addNews(pick([`🎤 ${n.name}, 단독 콘서트 전석 매진`, `📱 ${n.name}, 인스타 라이브서 "신보 작업 중" 언급`, `🤝 ${n.name}, 해외 프로듀서와 작업 중`, `😢 ${n.name}, 잠정 활동 중단 선언`, `🔥 ${n.name} 무대 영상 조회수 폭발`]), 'npc');
+  if (R() < 0.12) {
+    const pool = S.npcs.filter(x => x.region === 'KR' && x.role === 'artist' && x.debutYear <= yearOf(t));
+    const a = pick(pool), b = pick(pool.filter(x => x !== a));
+    addNews(fill(pick(NPC_NEWS), { a: a.name, b: b.name }), 'npc');
   }
 }
 
@@ -1601,6 +1808,7 @@ function resolveInbox(id, choice, extra = {}) {
   if (!m) return { ok: false, msg: '만료된 제안입니다.' };
   const done = (res) => { S.inbox = S.inbox.filter(x => x.id !== id); save(); return res; };
   const d = m.data;
+  if (m.type === 'story') return resolveStory(m, choice);
   if (choice === 'decline') {
     if (m.type === 'feature') { const n = npc(d.npcId); n.rel = clamp(n.rel - 4, 0, 100); }
     if (m.type === 'diss') { p.sentiment -= 3; addNews(`😶 ${p.stage}, ${d.npcName}의 디스에 무대응`, 'info'); }
@@ -1644,7 +1852,7 @@ function resolveInbox(id, choice, extra = {}) {
       if (!res.ok) { p.money -= d.fee; return res; }
       res.release.type = 'compilation'; res.release.title = d.host; res.release.compName = d.host;
       song(s.id).domBase *= 1.2;
-      return done({ ok: true, msg: `「${s.title}」이(가) ${d.host}에 수록되었습니다. 참여료 ${fmtMoney(d.fee)}`, release: res.release });
+      return done({ ok: true, msg: `「${s.title}」${josa(s.title, '이')} ${d.host}에 수록되었습니다. 참여료 ${fmtMoney(d.fee)}`, release: res.release });
     }
     case 'tv': {
       S.ap = 0;
@@ -1710,12 +1918,353 @@ function load() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return false;
     S = JSON.parse(raw);
+    migrate();
     return true;
   } catch (e) { return false; }
 }
 function hasSave() { try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; } }
 function deleteSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } }
 function exportSave() { return JSON.stringify(S); }
-function importSave(str) { const o = JSON.parse(str); if (!o.player || !o.npcs) throw new Error('bad'); S = o; save(); }
+function importSave(str) { const o = JSON.parse(str); if (!o.player || !o.npcs) throw new Error('bad'); S = o; migrate(); save(); }
 
 if (typeof module !== 'undefined') module.exports = { newGame, nextWeek, makeSong, releaseWork, getS: () => S };
+
+/* =========================================================
+ *  내 레이블
+ * ========================================================= */
+const LABEL_UPGRADE_COST = [20000000, 60000000, 150000000];
+const LABEL_UPGRADES = { studio: '🎚️ 스튜디오', promo: '📣 홍보팀', ar: '🔍 A&R팀' };
+
+function foundLabel({ name, emoji, color }) {
+  const p = S.player;
+  if (S.myLabel) return { ok: false, msg: '이미 레이블을 운영 중입니다.' };
+  if (p.label) return { ok: false, msg: '다른 레이블과 계약 중에는 설립할 수 없습니다. 먼저 계약을 끝내세요.' };
+  if (p.fame < 30) return { ok: false, msg: '국내 인지도 30 이상이 필요합니다.' };
+  if (p.money < 50000000) return { ok: false, msg: '설립 자금 5,000만원이 필요합니다.' };
+  if (!name || !name.trim()) return { ok: false, msg: '레이블 이름을 입력하세요.' };
+  p.money -= 50000000;
+  S.myLabel = { name: name.trim(), emoji: emoji || '🏷️', color: color || '#a855f7', foundedT: S.t, lv: { studio: 0, promo: 0, ar: 0 }, revTotal: 0, weekly: 0, releases: 0 };
+  S.inbox = S.inbox.filter(m => m.type !== 'label');
+  addNews(`🏷️ ${p.stage}, 자체 레이블 '${S.myLabel.name}' 설립`, 'good');
+  addStory(`${p.stage}${josa(p.stage, '은')} 자신의 레이블 '${S.myLabel.name}'${josa(S.myLabel.name, '을')} 세웠다. 이제 누군가의 소속 아티스트가 아니라, 누군가의 꿈을 책임지는 사람이 되었다.`, 'label');
+  addMilestone('own_label', `자체 레이블 '${S.myLabel.name}' 설립`);
+  react('label_own', 5);
+  save();
+  return { ok: true, msg: `레이블 '${S.myLabel.name}'${josa(S.myLabel.name, '을')} 설립했습니다! 아티스트 탭에서 소속 아티스트를 영입하세요.` };
+}
+function labelRoster() { return S.npcs.filter(n => n.label === 'mylabel'); }
+function rosterCap() { return S.myLabel ? 2 + S.myLabel.lv.ar * 2 : 0; }
+function upgradeLabel(kind) {
+  const L = S.myLabel; if (!L) return { ok: false, msg: '레이블이 없습니다.' };
+  const lv = L.lv[kind]; if (lv >= 3) return { ok: false, msg: '이미 최대 레벨입니다.' };
+  const cost = LABEL_UPGRADE_COST[lv];
+  if (S.player.money < cost) return { ok: false, msg: `비용 ${fmtMoney(cost)}이 부족합니다.` };
+  S.player.money -= cost; L.lv[kind]++;
+  addNews(`🏷️ ${L.name}, ${LABEL_UPGRADES[kind]} 확장 (Lv.${L.lv[kind]})`, 'info');
+  save();
+  return { ok: true, msg: `${LABEL_UPGRADES[kind]} Lv.${L.lv[kind]} 업그레이드 완료!` };
+}
+function signCost(n) {
+  const lab = n.label && labelOf(n.label);
+  return Math.round((npcFee(n) * 2 + (lab ? npcFee(n) * 3 : 0)) / 100000) * 100000;
+}
+function signChance(n) {
+  if (!S.myLabel || n.region !== 'KR' || n.label === 'mylabel') return 0;
+  const lab = n.label && labelOf(n.label);
+  let c = 0.15 + n.rel / 120 + (S.player.fame - n.fame) / 80 + S.myLabel.lv.ar * 0.1 + labelRoster().length * 0.02;
+  if (lab) c -= lab.tier === '대형기획사' || lab.tier === '글로벌' ? 0.5 : lab.tier === '메이저' ? 0.3 : 0.15;
+  if (n.rival) c -= 0.2;
+  if (n.debutYear >= yearOf(S.t) - 1) c += 0.15; // 신인은 영입이 쉽다
+  return clamp(c, 0.02, 0.9);
+}
+function signArtist(id) {
+  const n = npc(id), L = S.myLabel;
+  if (!L) return { ok: false, msg: '먼저 레이블을 설립하세요.' };
+  if (labelRoster().length >= rosterCap()) return { ok: false, msg: `소속 아티스트 정원(${rosterCap()}명)이 찼습니다. A&R팀을 확장하세요.` };
+  const cost = signCost(n);
+  if (S.player.money < cost) return { ok: false, msg: `계약금 ${fmtMoney(cost)}이 부족합니다.` };
+  if (!useAP(1)) return { ok: false, msg: '행동력이 부족합니다.' };
+  if (R() < signChance(n)) {
+    const old = n.label && labelOf(n.label);
+    S.player.money -= cost; n.label = 'mylabel'; n.rel = clamp(n.rel + 10, 0, 100);
+    addNews(`✍️ ${n.name}, ${old ? `${old.name} 떠나 ` : ''}${L.name}${josa(L.name, '과')} 전속 계약`, 'good');
+    addStory(`${n.name}${josa(n.name, '이')} ${L.name}의 식구가 되었다.`, 'label');
+    react('label_own', 2, { npc: n.name });
+    save();
+    return { ok: true, msg: `${n.name}${josa(n.name, '이')} ${L.name}${josa(L.name, '과')} 계약했습니다! (계약금 ${fmtMoney(cost)})` };
+  }
+  n.rel = clamp(n.rel - 2, 0, 100); save();
+  return { ok: true, msg: `${n.name}: "${pick(['좋은 제안이지만 지금 소속사에 의리가 있어서요.', '조금 더 생각해볼게요.', '조건이 좀 아쉽네요.', '아직은 혼자가 편해요.'])}" (영입 실패)` };
+}
+function dropArtist(id) {
+  const n = npc(id); if (!n || n.label !== 'mylabel') return { ok: false, msg: '소속 아티스트가 아닙니다.' };
+  n.label = null; n.rel = clamp(n.rel - 15, 0, 100);
+  addNews(`📤 ${n.name}, ${S.myLabel.name}${josa(S.myLabel.name, '과')} 계약 종료`, 'info'); save();
+  return { ok: true, msg: `${n.name}${josa(n.name, '과')} 계약을 종료했습니다.` };
+}
+function closeLabel() {
+  const L = S.myLabel; if (!L) return { ok: false, msg: '레이블이 없습니다.' };
+  labelRoster().forEach(n => { n.label = null; n.rel = clamp(n.rel - 10, 0, 100); });
+  addNews(`🏚️ ${S.player.stage}의 레이블 '${L.name}' 폐업`, 'bad');
+  addStory(`'${L.name}'의 간판을 내렸다. 꿈은 끝나지 않았지만, 한 시절이 끝났다.`, 'label');
+  S.myLabel = null; save();
+  return { ok: true, msg: '레이블을 정리했습니다.' };
+}
+function myLabelWeekly(summary) {
+  const L = S.myLabel;
+  const roster = labelRoster();
+  let rev = 0;
+  S.chartSongs.forEach(cs => { const n = cs.artistId && npc(cs.artistId); if (n && n.label === 'mylabel') rev += (cs.dom * 4.5 + cs.glob * 5) * 0.35; });
+  // 소속 아티스트 곡에 홍보 효과
+  const ops = 500000 + roster.length * 300000 + (L.lv.studio + L.lv.promo + L.lv.ar) * 200000;
+  L.weekly = Math.round(rev - ops); L.revTotal += Math.round(rev);
+  S.player.money += L.weekly;
+  summary.income += Math.max(0, Math.round(rev)); summary.expense += ops;
+  roster.forEach(n => { n.rel = clamp(n.rel + 0.3, 0, 100); if (R() < 0.02 + L.lv.studio * 0.01) n.skill = clamp(n.skill + 1, 0, 95); });
+}
+
+/* =========================================================
+ *  투어 & 굿즈
+ * ========================================================= */
+function tourCooldown() { return Math.max(0, (S.cooldowns.tour || 0) - S.t); }
+function actTour(id) {
+  const p = S.player, tr = TOURS.find(x => x.id === id);
+  if (!tr) return { ok: false, msg: '투어 정보 오류' };
+  if (p.fame < tr.minFame || p.globalFame < tr.minGlobal) return { ok: false, msg: `인지도 ${tr.minFame}+${tr.minGlobal ? `, 해외 인지도 ${tr.minGlobal}+` : ''}가 필요합니다.` };
+  if (tourCooldown()) return { ok: false, msg: `지난 투어 후 회복 중입니다. (${tourCooldown()}주 후 가능)` };
+  if (p.money < tr.cost) return { ok: false, msg: `제작비 ${fmtMoney(tr.cost)}이 부족합니다.` };
+  if (S.ap < 3) return { ok: false, msg: '투어는 행동력 3이 모두 필요합니다.' };
+  S.ap = 0;
+  const fans = totalFollowers();
+  let demand = fans * (p.coreRatio / 100) * 0.3 + fans * 0.015 + p.fame * p.fame * 6;
+  if (tr.minGlobal) demand += p.globalFame * p.globalFame * 260;
+  const perf = p.skills.stage * 0.6 + perfSkill(p.genre) * 0.4;
+  demand *= (0.6 + p.sentiment / 150) * rnd(0.75, 1.2);
+  const tickets = Math.round(Math.min(tr.cap, demand));
+  const rate = tickets / tr.cap;
+  const revenue = Math.round(tickets * tr.price * 0.3 + tickets * rnd(3000, 9000));
+  p.money += revenue - tr.cost;
+  p.skills.stage = clamp(p.skills.stage + 1.5 * (105 - p.skills.stage) / 100, 0, 100);
+  const fol = Math.round(tickets * (0.3 + perf / 200));
+  p.followers.insta += Math.round(fol * 0.5); p.followers.youtube += Math.round(fol * 0.3); p.followers.x += Math.round(fol * 0.2);
+  p.buzz += 4 + rate * 10; p.gLegacy += tr.glob * rate;
+  p.coreRatio = clamp(p.coreRatio + rate * 2, 3, 60);
+  p.sentiment = clamp(p.sentiment + (perf > 55 ? 3 : -1), 0, 100);
+  p.mental = clamp(p.mental - 15, 0, 100);
+  S.cooldowns.tour = S.t + 16;
+  if (['national', 'arena', 'asia', 'world'].includes(tr.id)) S.flags.tourNational = true;
+  if (tr.id === 'world') { S.flags.worldTour = true; addMilestone('world_tour', '월드 투어 개최'); }
+  if (rate >= 0.99) addMilestone('soldout_' + tr.id, `${tr.name} 전석 매진`);
+  react('tour', 5, {}, { weights: tr.glob ? { global: 3 } : {} });
+  addNews(`🎫 ${p.stage} ${tr.name}, 관객 ${fmtNum(tickets)}명 (${Math.round(rate * 100)}%)`, rate > 0.9 ? 'good' : 'info');
+  addStory(`${tr.name}. ${rate >= 0.99 ? '전석 매진이었다. 마지막 곡에서 떼창이 터졌다.' : rate > 0.6 ? `${Math.round(rate * 100)}%의 객석이 찼다. 충분히 뜨거웠다.` : '빈자리가 눈에 밟혔지만, 와준 사람들을 위해 끝까지 노래했다.'}`, 'tour');
+  save();
+  const profit = revenue - tr.cost;
+  return { ok: true, msg: `${tr.name} 종료! 관객 ${fmtNum(tickets)}명 (판매율 ${Math.round(rate * 100)}%) · ${profit >= 0 ? '순수익' : '적자'} ${fmtMoney(profit)}` };
+}
+function merchCooldown() { return Math.max(0, (S.cooldowns.merch || 0) - S.t); }
+function actMerch() {
+  const p = S.player;
+  if (p.fame < 10) return { ok: false, msg: '인지도 10 이상이 필요합니다.' };
+  if (merchCooldown()) return { ok: false, msg: `다음 굿즈는 ${merchCooldown()}주 후에 낼 수 있습니다.` };
+  const cost = 5000000;
+  if (p.money < cost) return { ok: false, msg: '제작비 500만원이 필요합니다.' };
+  const buyers = Math.round(totalFollowers() * (p.coreRatio / 100) * rnd(0.02, 0.06) * (0.5 + p.sentiment / 100));
+  const revenue = buyers * 32000;
+  p.money += revenue - cost; p.sentiment = clamp(p.sentiment + 1, 0, 100);
+  S.cooldowns.merch = S.t + 12;
+  const item = pick(['후드티', '키링 세트', '한정판 LP', '포토북', '응원봉', '볼캡', '티셔츠']);
+  addNews(`🛍️ ${p.stage} 공식 ${item} 출시`, 'info');
+  save();
+  return { ok: true, msg: `${item} 출시! 구매자 ${fmtNum(buyers)}명 · ${revenue - cost >= 0 ? '순수익' : '손실'} ${fmtMoney(revenue - cost)}` };
+}
+
+/* =========================================================
+ *  군 복무
+ * ========================================================= */
+function enlist() {
+  const p = S.player;
+  p.military = { startT: S.t, endT: S.t + 78 };
+  S.ap = 0; S.postsLeft = 0;
+  if (p.contract) p.contract.endT += 78;
+  S.inbox = S.inbox.filter(m => m.type === 'story');
+  p.coreRatio = clamp(p.coreRatio + 2, 3, 60);
+  react('military_in', 5);
+  addNews(`🪖 ${p.stage}, 오늘 입대… "다녀오겠습니다"`, 'info');
+  addStory(`${p.stage}${josa(p.stage, '은')} 머리를 짧게 자르고 훈련소로 향했다. 1년 반 동안 마이크 대신 총을 든다.`, 'military');
+}
+function discharge(summary) {
+  const p = S.player;
+  p.military = null;
+  p.buzz += 15; p.sentiment = clamp(p.sentiment + 6, 0, 100); p.coreRatio = clamp(p.coreRatio + 2, 3, 60); p.hype += 25;
+  react('military_out', 6);
+  addNews(`🎖️ ${p.stage}, 만기 전역! 복귀 신호탄`, 'good');
+  addStory(`전역. 부대 정문을 나서며 가장 먼저 한 일은 휴대폰 메모장에 가사 한 줄을 적는 것이었다.`, 'military');
+  addMilestone('discharge', '군 복무 완료');
+  summary.events.push('🎖️ 전역했습니다! 복귀작에 대한 기대감(하입)이 높습니다.');
+}
+// 전역까지 빠르게 진행: 주요 이벤트만 모아서 돌려준다
+function fastForwardMilitary() {
+  const ev = [];
+  let guard = 0;
+  while (S.player.military && guard++ < 90) {
+    const sm = nextWeek();
+    sm.chart.concat(sm.events).forEach(e => { if (/수상|후보|전역|🎆|💎|📝/.test(e)) ev.push(`[${dateLabel(S.t)}] ${e}`); });
+  }
+  return ev;
+}
+
+/* =========================================================
+ *  스토리 이벤트
+ * ========================================================= */
+function storyEvents(summary) {
+  const p = S.player;
+  if (S.inbox.some(m => m.type === 'story')) return;
+  S.storyDone = S.storyDone || {};
+  for (const ev of shuffle(STORY_EVENTS)) {
+    if (ev.once && S.storyDone[ev.id]) continue;
+    if ((S.cooldowns['st_' + ev.id] || 0) > S.t) continue;
+    let ok = false;
+    try { ok = ev.cond(p, S); } catch (e) { ok = false; }
+    if (!ok || R() >= ev.w) continue;
+    const v = storyVars();
+    S.storyDone[ev.id] = S.t;
+    S.cooldowns['st_' + ev.id] = S.t + 20;
+    addInbox({ type: 'story', title: fill(ev.title, v), text: fill(ev.text, v), data: { eventId: ev.id }, expires: S.t + 3 });
+    summary.events.push(`📖 ${fill(ev.title, v)} — 소식함에서 선택하세요.`);
+    if (ev.id === 'doubt') S.flags.doubtNow = true;
+    if (ev.id === 'slump') S.flags.slumpNow = true;
+    return;
+  }
+}
+
+function applyFx(fx, out) {
+  const p = S.player;
+  if (fx.chance) {
+    const [pr, a, b] = fx.chance;
+    const pickFx = R() < pr ? a : b;
+    applyFx(pickFx, out);
+    if (pickFx.res) out.res = pickFx.res;
+  }
+  if (fx.ap && S.ap < -fx.ap) throw new Error('행동력이 부족합니다.');
+  if (fx.ap) S.ap += fx.ap;
+  if (fx.mental) p.mental = clamp(p.mental + fx.mental, 0, 100);
+  if (fx.money) p.money += fx.money;
+  if (fx.sentiment) p.sentiment = clamp(p.sentiment + fx.sentiment, 0, 100);
+  if (fx.core) p.coreRatio = clamp(p.coreRatio + fx.core, 3, 60);
+  if (fx.cred) p.cred += fx.cred;
+  if (fx.buzz) p.buzz += fx.buzz;
+  if (fx.followers) { p.followers.insta += Math.round(fx.followers * 0.6); p.followers.youtube += Math.round(fx.followers * 0.25); p.followers.x += Math.round(fx.followers * 0.15); }
+  if (fx.flag) { S.flags[fx.flag] = true; S.flagT[fx.flag] = S.t; }
+  if (fx.insp) { p.inspiration = (p.inspiration || []).filter(x => x.theme !== fx.insp[0]); p.inspiration.push({ theme: fx.insp[0], bonus: fx.insp[1], until: S.t + 20 }); out.notes.push(`💡 '${fx.insp[0]}' 영감 +${fx.insp[1]} (20주 안에 이 주제로 곡을 쓰면 반영)`); }
+  if (fx.skill) { const [k, g] = fx.skill; p.skills[k] = clamp(p.skills[k] + g, 0, 100); out.notes.push(`📈 ${SKILL_NAMES[k]} +${g}`); }
+  if (fx.mentorRel && S.mentorId) { const m = npc(S.mentorId); m.rel = clamp(m.rel + fx.mentorRel, 0, 100); }
+  if (fx.rivalRel && S.rivalId) { const r = npc(S.rivalId); r.rel = clamp(r.rel + fx.rivalRel, 0, 100); }
+  if (fx.react) react(fx.react, 3);
+  if (fx.diss && S.rivalId) { p.dissTarget = S.rivalId; p.dissDeadline = S.t + 6; out.notes.push('⚔️ 6주 안에 주제가 \'디스\'인 곡을 발매하세요.'); }
+  if (fx.loseDemo) { const un = unreleasedSongs(); if (un.length) { const lost = pick(un); S.songs = S.songs.filter(x => x !== lost); out.notes.push(`💾 데모 「${lost.title}」${josa(lost.title, '을')} 잃었습니다.`); } }
+  if (fx.military) { enlist(); out.notes.push('🪖 78주 동안 활동할 수 없습니다. 홈 화면에서 전역까지 빠르게 넘길 수 있습니다.'); }
+}
+
+function resolveStory(m, choiceId) {
+  const ev = STORY_EVENTS.find(e => e.id === m.data.eventId);
+  const ch = ev && ev.choices.find(c => c.id === choiceId);
+  if (!ch) return { ok: false, msg: '선택지를 찾을 수 없습니다.' };
+  const out = { res: ch.res, notes: [] };
+  try { applyFx(ch.fx, out); } catch (e) { return { ok: false, msg: e.message }; }
+  if (ev.id === 'doubt') S.flags.doubtNow = false;
+  if (ev.id === 'slump') S.flags.slumpNow = false;
+  const res = fill(out.res || '', storyVars());
+  addStory(`${m.title} — ${ch.label}. ${res}`, 'choice');
+  S.inbox = S.inbox.filter(x => x.id !== m.id);
+  save();
+  return { ok: true, msg: res || ch.label, story: { title: m.title, choice: ch.label, res, notes: out.notes } };
+}
+
+/* =========================================================
+ *  챕터 & 목표
+ * ========================================================= */
+function hasMs(k) { return S.milestones.some(m => m.key === k); }
+function chapterIndex() {
+  const p = S.player;
+  let c = 0;
+  if (p.debutT) c = 1;
+  if (c >= 1 && (p.fame >= 20 || hasMs('melon_in'))) c = 2;
+  if (c >= 2 && (p.fame >= 45 || hasMs('melon10'))) c = 3;
+  if (c >= 3 && (p.fame >= 70 || S.trophies.some(t => t.major && t.award !== '서울 스트리밍 어워즈'))) c = 4;
+  if (c >= 3 && (p.globalFame >= 30 || hasMs('hot100'))) c = Math.max(c, 5);
+  if (c >= 4 && (hasMs('grammy_win') || (p.fame >= 95 && p.globalFame >= 70))) c = 6;
+  return c;
+}
+function checkChapter(summary) {
+  const c = chapterIndex();
+  if (c > S.chapter) {
+    S.chapter = c;
+    const ch = CHAPTERS[c];
+    const text = fill(ch.text, storyVars());
+    addStory(`${ch.title} — ${text}`, 'chapter');
+    summary.events.push(`📖 새 챕터: ${ch.title}`);
+    summary.chapter = { title: ch.title, text };
+  }
+}
+function goalDone(id) {
+  const p = S.player;
+  switch (id) {
+    case 'song': return S.songs.length > 0;
+    case 'debut': return !!p.debutT;
+    case 'ep': return S.releases.some(r => r.type === 'EP' || r.type === 'album');
+    case 'melon': return hasMs('melon_in');
+    case 'star4': return S.releases.some(r => r.reviews.some(v => v.outlet === 'rhythmer' && v.value >= 4));
+    case 'fol100k': return totalFollowers() >= 1e5;
+    case 'label': return !!(p.label || S.myLabel || S.milestones.some(m => m.key.startsWith('label_')));
+    case 'award': return S.trophies.length > 0;
+    case 'top10': return hasMs('melon10');
+    case 'tour': return !!S.flags.tourNational;
+    case 'melon1': return hasMs('melon1');
+    case 'kma': return S.trophies.some(t => t.award === '한국대중음악상');
+    case 'hot100': return hasMs('hot100') || hasMs('hot100feat');
+    case 'grammyNom': return hasMs('grammy_nom');
+    case 'grammy': return hasMs('grammy_win');
+  }
+  return false;
+}
+function checkGoals(summary) {
+  GOALS.forEach(g => {
+    if (S.goalsDone[g.id] || !goalDone(g.id)) return;
+    S.goalsDone[g.id] = S.t;
+    summary.events.push(`🎯 목표 달성: ${g.text}`);
+    addStory(`목표 달성 — ${g.text}.`, 'goal');
+  });
+}
+
+/* ---------- 은퇴 에필로그 ---------- */
+function epilogue() {
+  const p = S.player;
+  const years = Math.max(1, Math.round((S.t - (p.debutT || S.t)) / 52));
+  const wins = S.trophies.length, grammy = hasMs('grammy_win');
+  const best = S.releases.slice().sort((a, b) => b.critic - a.critic)[0];
+  const top = S.songs.slice().sort((a, b) => (b.totalDom + b.totalGlob) - (a.totalDom + a.totalGlob))[0];
+  let arch;
+  if (grammy) arch = `${p.stage}${josa(p.stage, '은')} 한국 음악사에서 가장 먼 곳까지 간 이름 중 하나로 기억된다.`;
+  else if (wins >= 10 && p.fame >= 70) arch = `${p.stage}${josa(p.stage, '은')} 한 시대를 정의한 아티스트였다. 시상식 무대는 늘 ${p.stage}의 차지였다.`;
+  else if (p.cred >= 12 && best && best.critic >= 80) arch = `대중적 성공과는 별개로, ${p.stage}${josa(p.stage, '은')} 평단과 음악가들이 가장 존경하는 이름으로 남았다.`;
+  else if (p.fame >= 60) arch = `${p.stage}의 노래는 한 세대의 플레이리스트를 채웠다.`;
+  else if (S.releases.length) arch = `큰 빛을 보진 못했지만, ${p.stage}의 음악을 인생곡으로 꼽는 사람들이 분명히 있다.`;
+  else arch = `${p.stage}의 이야기는 시작도 하기 전에 끝났다. 하지만 꿈을 꿨다는 사실만은 남았다.`;
+  const lines = [`${years}년의 활동.`, arch];
+  if (best) lines.push(`평단이 꼽은 최고작은 『${best.title}』(평단 지수 ${best.critic}).`);
+  if (top && top.totalDom + top.totalGlob > 0) lines.push(`가장 많이 들린 노래는 「${top.title}」, 누적 ${fmtNum(top.totalDom + top.totalGlob)}회.`);
+  if (S.myLabel) lines.push(`${p.stage}${josa(p.stage, '이')} 세운 레이블 '${S.myLabel.name}'${josa(S.myLabel.name, '은')} 다음 세대를 키워내고 있다.`);
+  const r = S.rivalId && npc(S.rivalId);
+  if (r) lines.push(`평생의 라이벌 ${r.name}${r.fame > p.fame ? josa(r.name, '은') + ' 끝내 한 발 앞서 있었다.' : josa(r.name, '을') + ' 결국 넘어섰다.'}`);
+  return lines.join(' ');
+}
+
+/* ---------- 이전 버전 세이브 보정 ---------- */
+function migrate() {
+  const d = { flags: {}, flagT: {}, story: [], npcWins: {}, goalsDone: {}, chapter: 0, myLabel: null, rivalId: null, mentorId: null, lastRelCritic: null, storyDone: {} };
+  Object.keys(d).forEach(k => { if (S[k] === undefined) S[k] = d[k]; });
+  if (!S.player.inspiration) S.player.inspiration = [];
+  if (S.player.military === undefined) S.player.military = null;
+  S.songs.forEach(s => { if (!s.note) s.note = songNote(s, titleFitsTheme(s.title, s.theme)); });
+}

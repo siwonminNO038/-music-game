@@ -56,153 +56,144 @@ const BACKGROUNDS = [
   }
 ];
 
-/* ---------- 국내 가상 아티스트 ---------- */
+/* ---------- 국내 아티스트 (실제 씬을 모티브로 한 패러디 캐릭터) ---------- */
 // fame: 0~100, skill: 평균 음악 퀄리티 성향
 const NPC_KR = [
   // 힙합
-  { name: '크로우맨', genre: '힙합', fame: 78, skill: 74, trait: '까칠함', label: 'goldrush', crew: 'vvs' },
-  { name: '비프로스트', genre: '힙합', fame: 66, skill: 82, trait: '장인', label: 'blackwave', crew: 'dreamers' },
-  { name: '칼날', genre: '힙합', fame: 45, skill: 79, trait: '독설가', label: 'underdog', crew: 'underdogs' },
-  { name: '도깨비불', genre: '힙합', fame: 58, skill: 68, trait: '유쾌함', label: 'goldrush', crew: 'vvs' },
-  { name: '에코챔버', genre: '힙합', fame: 32, skill: 85, trait: '신비주의', label: 'underdog', crew: 'dreamers' },
-  { name: '블루문', genre: '힙합', fame: 51, skill: 70, trait: '감성적', label: 'blackwave', crew: null },
-  { name: '김씨네아들', genre: '힙합', fame: 24, skill: 66, trait: '유쾌함', label: null, crew: 'alley' },
-  { name: '스모크스택', genre: '힙합', fame: 38, skill: 63, trait: '허세', label: 'goldrush', crew: 'vvs' },
-  { name: '검은양', genre: '힙합', fame: 29, skill: 80, trait: '장인', label: 'underdog', crew: 'underdogs' },
-  { name: '로우킥', genre: '힙합', fame: 18, skill: 61, trait: '독설가', label: null, crew: 'alley' },
-  { name: '무명씨', genre: '힙합', fame: 12, skill: 72, trait: '신비주의', label: null, crew: 'underdogs' },
-  { name: '다크호스', genre: '힙합', fame: 47, skill: 69, trait: '허세', label: 'goldrush', crew: null },
-  { name: '퀸시아', genre: '힙합', fame: 55, skill: 76, trait: '카리스마', label: 'blackwave', crew: null },
-  { name: '잼잼', genre: '힙합', fame: 21, skill: 58, trait: '유쾌함', label: null, crew: 'alley' },
-  { name: '사이렌', genre: '힙합', fame: 36, skill: 73, trait: '카리스마', label: null, crew: 'dreamers' },
-  { name: '옥탑방', genre: '힙합', fame: 15, skill: 70, trait: '감성적', label: 'underdog', crew: 'underdogs' },
-  { name: '골목대장', genre: '힙합', fame: 26, skill: 60, trait: '허세', label: null, crew: 'alley' },
-  { name: '바닐라갱', genre: '힙합', fame: 42, skill: 62, trait: '유쾌함', label: 'goldrush', crew: 'vvs' },
+  { name: '빈치노', genre: '힙합', fame: 80, skill: 87, trait: '장인', label: 'billionaire', crew: null, bio: '세련된 라임과 미술적 감각의 아이콘' },
+  { name: '이쎈스', genre: '힙합', fame: 60, skill: 91, trait: '독설가', label: 'bnc', crew: 'soul', bio: '씬이 인정하는 가사의 신. 말 한마디가 칼이다' },
+  { name: '지코어', genre: '힙합', fame: 88, skill: 75, trait: '카리스마', label: 'kozy', crew: null, bio: '아이돌과 힙합의 경계를 허문 히트메이커' },
+  { name: '사이먼 도밍고', genre: '힙합', fame: 70, skill: 77, trait: '유쾌함', label: 'aomz', crew: null, bio: '예능과 음악을 오가는 씬의 맏형' },
+  { name: '제이파크', genre: '힙합', fame: 84, skill: 72, trait: '카리스마', label: 'aomz', crew: null, bio: '레이블 사장님 겸 글로벌 엔터테이너' },
+  { name: '비와이즈', genre: '힙합', fame: 60, skill: 83, trait: '장인', label: 'jamaisvu', crew: null, bio: '신념과 테크닉으로 무장한 서바이벌 우승자' },
+  { name: '창모아', genre: '힙합', fame: 72, skill: 79, trait: '허세', label: 'ambitious', crew: null, bio: '피아노 치는 트랩 장인. 메테오처럼 떨어진 히트곡' },
+  { name: '더 콰이어트', genre: '힙합', fame: 64, skill: 80, trait: '허세', label: 'billionaire', crew: null, bio: '플렉스 문화를 정착시킨 베테랑' },
+  { name: '도끼날', genre: '힙합', fame: 55, skill: 72, trait: '허세', label: null, crew: null, bio: '천재 소년에서 플렉스의 상징이 된 래퍼' },
+  { name: '키드밀크', genre: '힙합', fame: 58, skill: 77, trait: '신비주의', label: 'indigo', crew: 'yngbroke', bio: '예측 불가능한 플로우의 트렌드세터' },
+  { name: '저스디스코', genre: '힙합', fame: 54, skill: 89, trait: '독설가', label: 'indigo', crew: 'soul', bio: '날 선 가사로 씬을 찌르는 리리시스트' },
+  { name: '스윙스타', genre: '힙합', fame: 61, skill: 75, trait: '독설가', label: 'justmusical', crew: null, bio: '디스전의 대명사이자 레이블 제국의 사장' },
+  { name: '기리보이즈', genre: '힙합', fame: 59, skill: 78, trait: '감성적', label: 'justmusical', crew: null, bio: '다작왕 감성 래퍼 겸 프로듀서' },
+  { name: '우원제', genre: '힙합', fame: 52, skill: 81, trait: '신비주의', label: 'aomz', crew: null, bio: '어둠을 노래하는 무표정한 래퍼' },
+  { name: '나플라이', genre: '힙합', fame: 50, skill: 83, trait: '장인', label: 'mkitsnow', crew: null, bio: '느긋한 톤과 압도적 그루브의 소유자' },
+  { name: '미란다', genre: '힙합', fame: 44, skill: 74, trait: '유쾌함', label: null, crew: 'yngbroke', bio: '거침없는 에너지의 여성 래퍼' },
+  { name: '이영디', genre: '힙합', fame: 66, skill: 71, trait: '유쾌함', label: null, crew: null, bio: '고등학생 래퍼 출신 예능 대세' },
+  { name: '쿠키몬', genre: '힙합', fame: 48, skill: 72, trait: '유쾌함', label: null, crew: 'yngbroke', bio: '시원한 발성의 파티 래퍼' },
+  { name: '넉살좋은', genre: '힙합', fame: 50, skill: 85, trait: '독설가', label: null, crew: 'vnc', bio: '라임 설계의 달인, 생활밀착형 가사' },
+  { name: '딥플로어', genre: '힙합', fame: 38, skill: 81, trait: '카리스마', label: null, crew: 'vnc', bio: '언더그라운드의 대부. 붐뱁 수호자' },
+  { name: '김새벽', genre: '힙합', fame: 30, skill: 88, trait: '신비주의', label: null, crew: 'dps', bio: '평단이 사랑하는 실험주의자' },
+  { name: '식케이크', genre: '힙합', fame: 64, skill: 70, trait: '허세', label: 'lower', crew: null, bio: '중독적인 훅의 트랩 스타' },
+  { name: '오르내리기', genre: '힙합', fame: 40, skill: 79, trait: '신비주의', label: null, crew: 'dps', bio: '몽환적인 사운드의 이모 래퍼' },
+  { name: '릴보이즈', genre: '힙합', fame: 55, skill: 74, trait: '감성적', label: null, crew: 'yngbroke', bio: '랩 서바이벌 우승 출신 감성 래퍼' },
   // R&B
-  { name: '벨벳룸', genre: 'R&B', fame: 61, skill: 77, trait: '감성적', label: 'velvet', crew: null },
-  { name: '새벽세시', genre: 'R&B', fame: 44, skill: 72, trait: '신비주의', label: 'velvet', crew: 'dawnwalk' },
-  { name: '레아', genre: 'R&B', fame: 68, skill: 80, trait: '카리스마', label: 'velvet', crew: null },
-  { name: '온도', genre: 'R&B', fame: 33, skill: 75, trait: '감성적', label: null, crew: 'dawnwalk' },
-  { name: '유하', genre: 'R&B', fame: 27, skill: 69, trait: '유쾌함', label: null, crew: 'dreamers' },
-  { name: '시럽', genre: 'R&B', fame: 49, skill: 64, trait: '허세', label: 'starline', crew: null },
+  { name: '딘트', genre: 'R&B', fame: 70, skill: 88, trait: '신비주의', label: null, crew: 'igloo', bio: '한국 얼터너티브 R&B의 상징. 컴백만 기다리는 팬들' },
+  { name: '크러시드', genre: 'R&B', fame: 76, skill: 81, trait: '감성적', label: 'qnation', crew: null, bio: '음색 하나로 차트를 씹어먹는 보컬리스트' },
+  { name: '자이언트티', genre: 'R&B', fame: 68, skill: 83, trait: '유쾌함', label: 'white', crew: null, bio: '독특한 음색의 소울 장인' },
+  { name: '백예림', genre: 'R&B', fame: 64, skill: 87, trait: '감성적', label: 'redvinyl', crew: null, bio: '천재 싱어송라이터, 영어 가사의 마술사' },
+  { name: '조지아', genre: 'R&B', fame: 46, skill: 78, trait: '감성적', label: null, crew: 'igloo', bio: '빈티지한 질감의 소울 보이스' },
+  { name: '헤이지', genre: 'R&B', fame: 66, skill: 75, trait: '감성적', label: null, crew: null, bio: '비 오는 날의 음원 강자' },
+  { name: '수라', genre: 'R&B', fame: 42, skill: 73, trait: '카리스마', label: null, crew: null, bio: '몽환적인 R&B 디바' },
   // 팝
-  { name: 'STELLA', genre: '팝', fame: 90, skill: 66, trait: '카리스마', label: 'starline', crew: null },
-  { name: 'NOVA9', genre: '팝', fame: 86, skill: 62, trait: '유쾌함', label: 'starline', crew: null },
-  { name: '루미', genre: '팝', fame: 72, skill: 70, trait: '감성적', label: 'starline', crew: null },
-  { name: '하이틴클럽', genre: '팝', fame: 64, skill: 58, trait: '유쾌함', label: 'starline', crew: null },
-  // 인디/록
-  { name: '공중정원', genre: '인디', fame: 39, skill: 83, trait: '장인', label: 'dawnrec', crew: 'dawnwalk' },
-  { name: '밤의해변', genre: '인디', fame: 46, skill: 78, trait: '감성적', label: 'dawnrec', crew: null },
-  { name: '느린우체통', genre: '인디', fame: 22, skill: 74, trait: '신비주의', label: 'dawnrec', crew: 'dawnwalk' },
-  { name: '소음공해', genre: '록', fame: 35, skill: 76, trait: '독설가', label: null, crew: null },
-  { name: '유리방', genre: '록', fame: 28, skill: 81, trait: '장인', label: 'dawnrec', crew: null },
+  { name: 'BTY', genre: '팝', fame: 99, skill: 72, trait: '카리스마', label: 'hybrid', crew: null, bio: '전 세계를 접수한 7인조 보이그룹' },
+  { name: '블랙민트', genre: '팝', fame: 96, skill: 67, trait: '카리스마', label: 'yj', crew: null, bio: '걸크러시의 정점, 글로벌 걸그룹' },
+  { name: '아이요', genre: '팝', fame: 94, skill: 81, trait: '감성적', label: 'idam', crew: null, bio: '국민 여동생에서 국민 아티스트로' },
+  { name: '뉴비즈', genre: '팝', fame: 90, skill: 69, trait: '유쾌함', label: 'hybrid', crew: null, bio: 'Y2K 감성의 신드롬 걸그룹' },
+  { name: '빅크런치', genre: '팝', fame: 80, skill: 71, trait: '카리스마', label: 'yj', crew: null, bio: '2세대 아이돌의 전설' },
+  // 인디 / 록
+  { name: '혁우', genre: '인디', fame: 64, skill: 87, trait: '신비주의', label: 'magicblue', crew: null, bio: '청춘의 불안을 노래하는 밴드' },
+  { name: '검정바지', genre: '인디', fame: 56, skill: 85, trait: '신비주의', label: 'bungbung', crew: null, bio: '한국 인디의 낭만주의자' },
+  { name: '잔원숭이', genre: '록', fame: 70, skill: 77, trait: '유쾌함', label: null, crew: null, bio: '복고 감성 록밴드, 페스티벌의 왕' },
+  { name: '실리콘겔', genre: '록', fame: 54, skill: 89, trait: '장인', label: 'magicblue', crew: null, bio: '평단이 극찬하는 사이키델릭 밴드' },
+  { name: '새청년', genre: '록', fame: 50, skill: 85, trait: '카리스마', label: 'magicblue', crew: null, bio: '기타 한 대로 무대를 장악하는 밴드' },
+  { name: '장기판과 얼굴들', genre: '록', fame: 52, skill: 80, trait: '유쾌함', label: 'bungbung', crew: null, bio: '능청스러운 가사의 국민 인디밴드' },
   // 일렉트로닉
-  { name: '글리치', genre: '일렉트로닉', fame: 31, skill: 79, trait: '신비주의', label: null, crew: 'dreamers' },
-  { name: '픽셀하트', genre: '일렉트로닉', fame: 40, skill: 67, trait: '유쾌함', label: 'starline', crew: null },
+  { name: '350', genre: '일렉트로닉', fame: 46, skill: 89, trait: '장인', label: 'banana', crew: null, bio: '뽕짝을 전자음악으로 재해석한 프로듀서' },
+  { name: '디제이 콜라', genre: '일렉트로닉', fame: 52, skill: 63, trait: '유쾌함', label: null, crew: null, bio: '페스티벌을 뒤흔드는 인기 DJ' },
   // 프로듀서
-  { name: '808장인', genre: '힙합', fame: 30, skill: 84, trait: '장인', label: 'goldrush', crew: 'vvs', role: 'producer' },
-  { name: '모노톤', genre: 'R&B', fame: 26, skill: 82, trait: '신비주의', label: 'velvet', crew: null, role: 'producer' },
-  { name: '프로듀서 하루', genre: '팝', fame: 41, skill: 80, trait: '유쾌함', label: 'starline', crew: null, role: 'producer' },
-  { name: '덕스', genre: '힙합', fame: 18, skill: 78, trait: '독설가', label: 'underdog', crew: 'underdogs', role: 'producer' },
-  { name: '알파벳', genre: '일렉트로닉', fame: 22, skill: 81, trait: '장인', label: null, crew: 'dawnwalk', role: 'producer' }
+  { name: '코드쿤스틱', genre: '힙합', fame: 50, skill: 86, trait: '장인', label: 'aomz', crew: null, role: 'producer', bio: '서정적인 붐뱁 비트의 장인' },
+  { name: '그레이스케일', genre: 'R&B', fame: 52, skill: 86, trait: '감성적', label: 'aomz', crew: null, role: 'producer', bio: '세련된 R&B 사운드 메이커' },
+  { name: '그루비홈', genre: '힙합', fame: 50, skill: 84, trait: '유쾌함', label: 'lower', crew: null, role: 'producer', bio: '트렌디한 히트곡 제조 듀오' },
+  { name: '세컨더리', genre: '팝', fame: 46, skill: 84, trait: '유쾌함', label: null, crew: null, role: 'producer', bio: '레트로 팝의 귀재' },
+  { name: '피캣', genre: '팝', fame: 45, skill: 83, trait: '장인', label: 'hybrid', crew: null, role: 'producer', bio: '글로벌 보이그룹의 메인 프로듀서' },
+  { name: '토일렛페이퍼', genre: '인디', fame: 26, skill: 80, trait: '신비주의', label: null, crew: 'dps', role: 'producer', bio: '로파이 감성 비트메이커' }
 ];
 
-/* ---------- 해외 가상 아티스트 ---------- */
+/* ---------- 해외 아티스트 (패러디) ---------- */
 const NPC_GLOBAL = [
-  { name: 'Lil Vortex', genre: '힙합', fame: 92, skill: 68, trait: '허세' },
-  { name: 'Kaylee Monroe', genre: '팝', fame: 97, skill: 75, trait: '카리스마' },
-  { name: 'Marcus Vane', genre: '힙합', fame: 88, skill: 86, trait: '장인' },
-  { name: 'Young Saint', genre: '힙합', fame: 80, skill: 71, trait: '유쾌함' },
-  { name: 'Zara Blu', genre: 'R&B', fame: 85, skill: 82, trait: '감성적' },
-  { name: 'Nightcrawler', genre: '힙합', fame: 74, skill: 79, trait: '신비주의' },
-  { name: 'Ivy Rhodes', genre: '인디', fame: 70, skill: 84, trait: '감성적' },
-  { name: 'Big Tundra', genre: '힙합', fame: 77, skill: 64, trait: '허세' },
-  { name: 'Solene', genre: 'R&B', fame: 82, skill: 78, trait: '카리스마' },
-  { name: 'Dex Arcade', genre: '일렉트로닉', fame: 79, skill: 73, trait: '유쾌함' },
-  { name: 'Rico Velvet', genre: '팝', fame: 84, skill: 66, trait: '카리스마' },
-  { name: 'Hailey Storm', genre: '록', fame: 72, skill: 80, trait: '독설가' },
-  { name: 'The Paper Moons', genre: '인디', fame: 68, skill: 83, trait: '장인' },
-  { name: 'Jaylen Crisp', genre: 'R&B', fame: 76, skill: 74, trait: '감성적' },
-  { name: 'MC Ghostwire', genre: '힙합', fame: 66, skill: 88, trait: '장인' }
+  { name: 'Kendall Lamarr', genre: '힙합', fame: 95, skill: 93, trait: '장인', bio: '퓰리처급 가사의 컴튼 출신 리리시스트' },
+  { name: 'Drakon', genre: '힙합', fame: 97, skill: 70, trait: '허세', bio: '차트를 지배하는 토론토의 6God' },
+  { name: 'Travis Scotch', genre: '힙합', fame: 90, skill: 73, trait: '허세', bio: '오토튠과 레이지의 테마파크' },
+  { name: 'Kanye East', genre: '힙합', fame: 86, skill: 84, trait: '독설가', bio: '천재와 논란 사이를 오가는 프로듀서-래퍼' },
+  { name: 'Tyler, the Inventor', genre: '힙합', fame: 86, skill: 87, trait: '유쾌함', bio: '컬러풀한 상상력의 작가주의 래퍼' },
+  { name: 'J. Coal', genre: '힙합', fame: 87, skill: 82, trait: '장인', bio: '노 피처링 플래티넘의 사나이' },
+  { name: 'Taylor Quick', genre: '팝', fame: 99, skill: 79, trait: '카리스마', bio: '시대를 기록하는 팝의 여왕' },
+  { name: 'The Weekday', genre: 'R&B', fame: 95, skill: 81, trait: '신비주의', bio: '80년대 신스와 어둠의 R&B' },
+  { name: 'SZE', genre: 'R&B', fame: 88, skill: 85, trait: '감성적', bio: '솔직한 가사의 얼터너티브 R&B 퀸' },
+  { name: 'Frank Lake', genre: 'R&B', fame: 80, skill: 93, trait: '신비주의', bio: '몇 년에 한 번 나타나는 전설의 은둔자' },
+  { name: 'Lily Eilish', genre: '팝', fame: 92, skill: 85, trait: '감성적', bio: '속삭이는 보컬의 Z세대 아이콘' },
+  { name: 'Doja Dog', genre: '팝', fame: 88, skill: 74, trait: '유쾌함', bio: '밈과 랩을 자유자재로 다루는 팝스타' },
+  { name: 'Bad Rabbit', genre: '팝', fame: 93, skill: 73, trait: '카리스마', bio: '라틴 음악의 글로벌 제왕' },
+  { name: 'Olivia Rodrigues', genre: '록', fame: 89, skill: 77, trait: '감성적', bio: '팝펑크로 돌아온 하이틴 스타' },
+  { name: 'Tame Impalo', genre: '인디', fame: 75, skill: 87, trait: '장인', bio: '1인 사이키델릭 밴드' },
+  { name: 'Daft Funk', genre: '일렉트로닉', fame: 78, skill: 89, trait: '신비주의', bio: '헬멧을 쓴 프렌치 하우스 듀오' },
+  { name: 'Pre Malone', genre: '팝', fame: 85, skill: 69, trait: '유쾌함', bio: '장르를 가리지 않는 문신투성이 히트메이커' }
 ];
 
-/* ---------- 레이블 ---------- */
+/* ---------- 레이블 (실제 레이블 모티브) ---------- */
 const LABELS = [
-  {
-    id: 'underdog', name: '언더도그 레코즈', tier: '인디', minFame: 8,
-    promo: 1.15, share: 0.75, advance: 3000000, cred: 6, global: 0,
-    quota: 1, weeks: 104, genres: ['힙합'],
-    desc: '실력파 래퍼들의 성지. 홍보력은 약하지만 평단의 신뢰가 두텁다.'
-  },
-  {
-    id: 'dawnrec', name: '새벽레코드', tier: '인디', minFame: 8,
-    promo: 1.1, share: 0.75, advance: 2000000, cred: 6, global: 0,
-    quota: 1, weeks: 104, genres: ['인디', '록', 'R&B', '일렉트로닉'],
-    desc: '감성 인디 음악의 산실. 음악적 자유를 최대한 보장한다.'
-  },
-  {
-    id: 'blackwave', name: '블랙웨이브', tier: '중형', minFame: 22,
-    promo: 1.45, share: 0.6, advance: 15000000, cred: 3, global: 0.02,
-    quota: 1, weeks: 104, genres: ['힙합', 'R&B'],
-    desc: '대중성과 음악성을 모두 잡은 힙합/R&B 중견 레이블.'
-  },
-  {
-    id: 'velvet', name: '벨벳하우스', tier: '중형', minFame: 22,
-    promo: 1.4, share: 0.6, advance: 12000000, cred: 3, global: 0.02,
-    quota: 1, weeks: 104, genres: ['R&B', '팝'],
-    desc: '세련된 R&B 사운드로 유명한 레이블.'
-  },
-  {
-    id: 'goldrush', name: '골드러시 레코즈', tier: '메이저', minFame: 38,
-    promo: 2.0, share: 0.5, advance: 60000000, cred: -3, global: 0.05,
-    quota: 2, weeks: 156, genres: ['힙합'],
-    desc: '차트를 장악한 힙합 메이저. 막강한 홍보력, 대신 "자본 힙합" 소리를 듣는다.'
-  },
-  {
-    id: 'starline', name: '스타라인 엔터', tier: '대형기획사', minFame: 50,
-    promo: 2.6, share: 0.4, advance: 150000000, cred: -8, global: 0.1,
-    quota: 2, weeks: 156, genres: ['팝', 'R&B', '힙합', '일렉트로닉'],
-    desc: '아이돌을 키워낸 대형 기획사. 홍보는 최강, 평단 신뢰도는 최하.'
-  },
-  {
-    id: 'orbit', name: 'Orbit Records (US)', tier: '글로벌', minFame: 65, minGlobal: 15,
-    promo: 1.8, share: 0.5, advance: 400000000, cred: 0, global: 0.35,
-    quota: 1, weeks: 156, genres: ['힙합', 'R&B', '팝', '인디', '록', '일렉트로닉'],
-    desc: '미국 메이저 레이블. 빌보드와 그래미로 가는 지름길.'
-  }
+  { id: 'bungbung', name: '붕붕레코드', tier: '인디', minFame: 5, promo: 1.1, share: 0.78, advance: 1500000, cred: 6, global: 0, quota: 1, weeks: 104, genres: ['인디', '록'], desc: '"싼 마이너스" 정신의 인디 레이블. 돈은 없어도 자유는 있다.' },
+  { id: 'magicblue', name: '매직블루베리', tier: '인디', minFame: 8, promo: 1.15, share: 0.75, advance: 2500000, cred: 6, global: 0, quota: 1, weeks: 104, genres: ['인디', '록', 'R&B'], desc: '감성 인디 음악의 산실. 밴드들의 꿈의 레이블.' },
+  { id: 'banana', name: 'BANANA', tier: '인디', minFame: 10, promo: 1.15, share: 0.75, advance: 3000000, cred: 7, global: 0.02, quota: 1, weeks: 104, genres: ['일렉트로닉', '인디', '힙합'], desc: '실험적인 전자음악과 아트팝의 집합소.' },
+  { id: 'indigo', name: '인디고블루 뮤직', tier: '인디', minFame: 12, promo: 1.2, share: 0.72, advance: 5000000, cred: 6, global: 0, quota: 1, weeks: 104, genres: ['힙합'], desc: '실력파 래퍼들이 모인 독립 레이블. 평단의 신뢰가 두텁다.' },
+  { id: 'bnc', name: 'BNC 레코즈', tier: '인디', minFame: 12, promo: 1.15, share: 0.75, advance: 4000000, cred: 8, global: 0, quota: 1, weeks: 104, genres: ['힙합'], desc: '래퍼가 직접 세운 아티스트 중심 레이블. 진정성의 상징.' },
+  { id: 'jamaisvu', name: '자메뷰 그룹', tier: '인디', minFame: 12, promo: 1.2, share: 0.72, advance: 4000000, cred: 4, global: 0, quota: 1, weeks: 104, genres: ['힙합'], desc: '신념 있는 음악을 추구하는 크리에이티브 그룹.' },
+  { id: 'justmusical', name: '저스트뮤지컬', tier: '중형', minFame: 18, promo: 1.35, share: 0.65, advance: 9000000, cred: 2, global: 0, quota: 2, weeks: 104, genres: ['힙합'], desc: '다작과 크루 문화로 유명한 힙합 레이블. 발매 의무가 빡빡하다.' },
+  { id: 'mkitsnow', name: 'MKIT SNOW', tier: '중형', minFame: 22, promo: 1.4, share: 0.62, advance: 12000000, cred: 3, global: 0.02, quota: 1, weeks: 104, genres: ['힙합', 'R&B'], desc: '감각적인 비주얼과 음악의 힙합 레이블.' },
+  { id: 'ambitious', name: '앰비셔스 뮤직', tier: '중형', minFame: 25, promo: 1.45, share: 0.6, advance: 15000000, cred: 2, global: 0.02, quota: 1, weeks: 104, genres: ['힙합', 'R&B'], desc: '트렌디한 트랩 사운드의 메카.' },
+  { id: 'redvinyl', name: '레드바이닐', tier: '중형', minFame: 22, promo: 1.4, share: 0.62, advance: 12000000, cred: 4, global: 0.02, quota: 1, weeks: 104, genres: ['R&B', '인디', '팝'], desc: '싱어송라이터를 존중하는 감성 레이블.' },
+  { id: 'lower', name: 'L0WER MUSIC', tier: '중형', minFame: 28, promo: 1.55, share: 0.58, advance: 20000000, cred: 1, global: 0.08, quota: 1, weeks: 104, genres: ['힙합', 'R&B'], desc: '해외 진출을 노리는 글로벌 지향 힙합 레이블.' },
+  { id: 'billionaire', name: '빌리어네어 레코즈', tier: '메이저', minFame: 35, promo: 1.7, share: 0.55, advance: 40000000, cred: 1, global: 0.03, quota: 1, weeks: 156, genres: ['힙합'], desc: '"돈과 실력" — 플렉스 문화를 연 전설의 레이블.' },
+  { id: 'aomz', name: 'AOMZ', tier: '메이저', minFame: 38, promo: 1.9, share: 0.5, advance: 60000000, cred: -2, global: 0.06, quota: 2, weeks: 156, genres: ['힙합', 'R&B'], desc: '힙합/R&B 최대 레이블. 막강한 홍보력과 스타 군단.' },
+  { id: 'white', name: '더 화이트 레이블', tier: '메이저', minFame: 40, promo: 1.9, share: 0.5, advance: 50000000, cred: 0, global: 0.06, quota: 1, weeks: 156, genres: ['R&B', '팝', '힙합'], desc: '세련된 프로듀싱의 프리미엄 레이블.' },
+  { id: 'qnation', name: 'Q NATION', tier: '대형기획사', minFame: 48, promo: 2.3, share: 0.45, advance: 100000000, cred: -5, global: 0.08, quota: 2, weeks: 156, genres: ['팝', 'R&B', '힙합'], desc: '월드스타 출신 대표의 대형 기획사.' },
+  { id: 'kozy', name: 'KOZY 엔터', tier: '대형기획사', minFame: 50, promo: 2.4, share: 0.45, advance: 120000000, cred: -4, global: 0.1, quota: 2, weeks: 156, genres: ['힙합', '팝'], desc: '히트메이커 래퍼가 세운 대형 기획사.' },
+  { id: 'yj', name: 'YJ 엔터', tier: '대형기획사', minFame: 55, promo: 2.6, share: 0.4, advance: 150000000, cred: -8, global: 0.12, quota: 2, weeks: 156, genres: ['팝', '힙합'], desc: '힙합 DNA의 3대 기획사. 홍보는 최강, 평단 신뢰도는 최하.' },
+  { id: 'hybrid', name: '하이브리드 엔터', tier: '대형기획사', minFame: 60, promo: 2.8, share: 0.4, advance: 200000000, cred: -8, global: 0.15, quota: 2, weeks: 156, genres: ['팝', 'R&B', '힙합'], desc: '전 세계를 정복한 보이그룹의 기획사.' },
+  { id: 'idam', name: '이담 엔터', tier: '중형', minFame: 45, promo: 1.8, share: 0.55, advance: 40000000, cred: 2, global: 0.04, quota: 1, weeks: 156, genres: ['팝', '인디', 'R&B'], desc: '솔로 아티스트 한 명을 위해 모든 걸 거는 소속사.' },
+  { id: 'interscoop', name: 'Interscoop Records (US)', tier: '글로벌', minFame: 62, minGlobal: 15, promo: 1.8, share: 0.5, advance: 400000000, cred: 0, global: 0.35, quota: 1, weeks: 156, genres: ['힙합', 'R&B', '팝', '인디', '록', '일렉트로닉'], desc: '미국 메이저. 빌보드와 그래미로 가는 지름길.' },
+  { id: 'colombo', name: 'Colombo Records (US)', tier: '글로벌', minFame: 65, minGlobal: 20, promo: 1.9, share: 0.5, advance: 500000000, cred: 1, global: 0.4, quota: 1, weeks: 156, genres: ['팝', 'R&B', '록', '힙합'], desc: '100년 역사의 미국 레이블. 월드 투어 지원.' }
 ];
 
-/* ---------- 크루 ---------- */
+/* ---------- 크루 (실제 크루 모티브) ---------- */
 const CREWS = [
-  { id: 'underdogs', name: '서울 언더독스', vibe: '정통 붐뱁, 가사 중심', cred: 5 },
-  { id: 'vvs', name: 'VVS 갱', vibe: '트랩, 플렉스, 화려함', cred: -2 },
-  { id: 'dreamers', name: '몽상가클럽', vibe: '실험적인 얼터너티브', cred: 4 },
-  { id: 'alley', name: '골목연합', vibe: '동네 친구들, 유쾌한 바이브', cred: 1 },
-  { id: 'dawnwalk', name: '새벽산책단', vibe: '감성 R&B와 인디의 교차점', cred: 3 }
+  { id: 'vnc', name: 'VNC (비스마이너 컴퍼니)', vibe: '정통 붐뱁, 생활 밀착형 가사', cred: 5 },
+  { id: 'soul', name: '소울컴퍼니 리턴즈', vibe: '2000년대 언더 정신의 계승자들', cred: 6 },
+  { id: 'yngbroke', name: 'YNG & BROKE', vibe: '트랩, 패션, 젊음, 그리고 텅 빈 통장', cred: -1 },
+  { id: 'dps', name: 'DPS (드림 퍼펙트 시즌)', vibe: '영상과 음악을 함께 만드는 크리에이티브 크루', cred: 3 },
+  { id: 'igloo', name: '클럽 이글루', vibe: '감성 R&B와 얼터너티브의 교차점', cred: 4 }
 ];
 
 /* ---------- 평론 매체 ---------- */
 const OUTLETS = [
   {
-    id: 'rhythmer', name: '리드머', scale: 'star5', genres: ['힙합', 'R&B'],
+    id: 'rhythmer', voice: 'formal', name: '리드머', scale: 'star5', genres: ['힙합', 'R&B'],
     w: { lyric: 0.34, sound: 0.2, hook: 0.06, originality: 0.2, perf: 0.2 }, coh: 0.3,
     bias: -6, credWeight: 0.6, minFame: 0,
     desc: '국내 힙합/R&B 전문 웹진. 짜게 주기로 유명하다.'
   },
   {
-    id: 'izm', name: 'IZM', scale: 'star5', genres: null,
+    id: 'izm', voice: 'formal', name: 'IZM', scale: 'star5', genres: null,
     w: { lyric: 0.2, sound: 0.3, hook: 0.1, originality: 0.3, perf: 0.1 }, coh: 0.25,
     bias: -4, credWeight: 0.3, minFame: 6,
     desc: '전 장르를 다루는 음악 웹진. 독창성을 중시한다.'
   },
   {
-    id: 'wave', name: '웨이브매거진', scale: 'ten', genres: null,
+    id: 'wave', voice: 'casual', name: '웨이브매거진', scale: 'ten', genres: null,
     w: { lyric: 0.12, sound: 0.28, hook: 0.35, originality: 0.1, perf: 0.15 }, coh: 0.15,
     bias: 4, credWeight: 0.1, minFame: 0,
     desc: '트렌디한 대중음악 매거진. 대중성에 후한 편.'
   },
   {
-    id: 'pitchfork', name: 'Pitchfork', scale: 'pf', genres: null,
+    id: 'pitchfork', voice: 'en', name: 'Pitchfork', scale: 'pf', genres: null,
     w: { lyric: 0.18, sound: 0.3, hook: 0.07, originality: 0.35, perf: 0.1 }, coh: 0.35,
     bias: -8, credWeight: 0.2, minFame: 0, minGlobal: 18,
     desc: '미국의 영향력 있는 음악 웹진. 8.0 이상은 대단한 영예.'
@@ -292,24 +283,12 @@ const AWARDS = [
   }
 ];
 
-/* ---------- 이름 생성용 단어 ---------- */
-const WORDS_KR = [
-  '새벽', '서울', '파도', '불면증', '네온', '유리', '그림자', '첫눈', '고백', '도망',
-  '열대야', '우주', '편지', '야경', '거울', '청춘', '독백', '굴레', '모래성', '불꽃',
-  '숨', '안개', '달동네', '한강', '기찻길', '종이비행기', '밤산책', '유성', '빈방', '소나기',
-  '나침반', '사춘기', '옥상', '지하철', '자정', '흑백', '비상구', '중력', '물결', '낙원'
-];
-const WORDS_EN = [
-  'Lemonade', 'Phantom', 'Gravity', 'Midnight', 'Velvet', 'Neon', 'Ghost', 'Paradise',
-  'Run', 'Fever', 'Gold', 'Ocean', 'Wildfire', 'Mirage', 'Echo', 'Satellite', 'Diamonds',
-  'Sirens', 'Low', 'Daylight', 'Static', 'Venom', 'Halo', 'Rodeo', 'Comet', 'Blue',
-  'Kingdom', 'Outlaw', 'Petals', 'Pressure', 'Cherry', 'Blackout', 'Heaven', 'Riot'
-];
-const WORDS_SUFFIX = ['', '', '', ' (Feat.)', ' Pt.2', ' Freestyle', ' Remix', ''];
-const ROOKIE_PREFIX = ['리틀', '영', '빅', '미스터', '올드', '쿨', '릴', '퓨어', ''];
+/* ---------- 신인 이름 생성용 ---------- */
+const ROOKIE_PREFIX = ['리틀', '영', '빅', '미스터', '올드', '쿨', '릴', '퓨어', '', '', ''];
 const ROOKIE_CORE = [
   '타이거', '스톤', '레인', '노바', '제로', '쿠키', '모스', '플랜B', '루키', '헤일',
-  '버터', '체리', '오션', '블랭크', '정글', '카피', '덱스', '보울', '피치', '해치'
+  '버터', '체리', '오션', '블랭크', '정글', '카피', '덱스', '보울', '피치', '해치',
+  '윤슬', '이든', '키라', '소코', '마야', '로운', '하울', '도담', '시온', '레오'
 ];
 
 /* ---------- 팬 페르소나 & 반응 템플릿 ---------- */
@@ -531,30 +510,4 @@ const REACTIONS = {
     old: ['광고까지... 진짜 변했다', '음악보다 광고가 먼저냐'],
     hater: ['돈독 올랐네']
   }
-};
-
-/* ---------- 평론 문장 템플릿 ---------- */
-const REVIEW_OPEN = {
-  great: ['올해의 앨범 후보에 이견을 달기 어렵다.', '{stage}는 이 작품으로 자신의 이름을 씬의 역사에 새겼다.', '처음부터 끝까지 흠잡을 곳을 찾기 힘든 걸작이다.'],
-  good: ['{stage}의 성장을 증명하는 단단한 작품이다.', '몇몇 아쉬움에도 불구하고 충분히 귀 기울일 가치가 있다.', '확실한 개성과 완성도를 갖춘 결과물.'],
-  mid: ['좋은 순간들이 있지만 전체적으로는 평이하다.', '가능성과 한계가 동시에 보이는 작품.', '무난함이 미덕이자 약점이 된 결과물.'],
-  bad: ['안타깝게도 {stage}의 이름값에 미치지 못한다.', '방향을 잃은 채 표류하는 작품이다.', '급조된 흔적이 곳곳에서 드러난다.']
-};
-const REVIEW_STRENGTH = {
-  lyric: '특히 가사가 빛난다. 단어 선택과 서사가 촘촘하다.',
-  sound: '프로덕션이 탁월하다. 사운드의 질감 하나하나가 공들인 티가 난다.',
-  hook: '귀에 꽂히는 훅이 강점이다. 대중적 흡인력이 확실하다.',
-  originality: '기존 문법을 비트는 독창적인 시도가 돋보인다.',
-  perf: '랩/보컬 퍼포먼스가 압도적이다. 목소리 자체가 악기처럼 쓰인다.'
-};
-const REVIEW_WEAK = {
-  lyric: '다만 가사는 상투적인 표현에 자주 기댄다.',
-  sound: '하지만 비트와 믹싱이 곡의 잠재력을 받쳐주지 못한다.',
-  hook: '훅의 힘이 약해 곡들이 쉽게 기억에 남지 않는다.',
-  originality: '어디선가 들어본 듯한 익숙함이 발목을 잡는다.',
-  perf: '랩/보컬의 표현력이 단조로워 후반부로 갈수록 지친다.'
-};
-const REVIEW_COH = {
-  high: '앨범 전체가 하나의 이야기처럼 유기적으로 흘러간다.',
-  low: '트랙 간의 연결이 느슨해 앨범보다는 싱글 모음집처럼 들린다.'
 };
