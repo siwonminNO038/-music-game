@@ -155,9 +155,10 @@ function newGame({ name, stage, bgId, genre, gender }) {
       followers: { insta: Math.round(bg.followers * 0.55), x: Math.round(bg.followers * 0.25), youtube: Math.round(bg.followers * 0.2) },
       coreRatio: 15, antiRatio: 2, sentiment: 60,
       label: null, contract: null, crew: null,
-      debutT: null, lastReleaseT: null, dissTarget: null, dissDeadline: 0,
+      debutT: null, lastReleaseT: null,
       tvDoneYear: 0, burnout: false, totalEarned: 0,
-      weeklyDom: 0, weeklyGlob: 0, inspiration: [], military: null
+      weeklyDom: 0, weeklyGlob: 0, inspiration: [], military: null,
+      notoriety: 0, prison: null, banUntil: 0, boycottUntil: 0, reflectUntil: 0, record: []
     },
     ap: 3, postsLeft: 3,
     npcs: [], crews: CREWS.map(c => Object.assign({ own: false }, c)),
@@ -167,11 +168,12 @@ function newGame({ name, stage, bgId, genre, gender }) {
     awards: {}, trophies: [], nominations: [], yearLists: [], milestones: [],
     history: [], lastSummary: null, cooldowns: {},
     flags: {}, flagT: {}, story: [], npcWins: {}, goalsDone: {}, chapter: 0,
-    myLabel: null, rivalId: null, mentorId: null, lastRelCritic: null
+    myLabel: null, rivalId: null, mentorId: null, lastRelCritic: null,
+    wars: [], crimes: [], cases: [], trends: null, yearIncome: {}
   };
   // NPC
-  NPC_KR.forEach(n => S.npcs.push(mkNpc(n, 'KR')));
-  NPC_GLOBAL.forEach(n => S.npcs.push(mkNpc(n, 'GLOBAL')));
+  NPC_KR.forEach(n => { const x = mkNpc(n, 'KR'); x.parody = true; S.npcs.push(x); });
+  NPC_GLOBAL.forEach(n => { const x = mkNpc(n, 'GLOBAL'); x.parody = true; S.npcs.push(x); });
   // 작년 데뷔한 신인들 (첫 시상식 신인상 후보)
   spawnRookies(START_YEAR - 1, 3, 1);
   // 라이벌: 나와 같은 해에 데뷔하는 동갑내기
@@ -195,6 +197,7 @@ function newGame({ name, stage, bgId, genre, gender }) {
   }
   S.t = 1;
   computeCharts(true);
+  rollTrends(START_YEAR);
   addNews(`${stage}, 음악 인생을 시작하다. "언젠가 그래미 무대에 설 거야."`, 'good');
   addStory(fill(PROLOGUE[bg.id] || PROLOGUE.underground, storyVars()), 'prologue');
   addStory(`${CHAPTERS[0].title} — ${fill(CHAPTERS[0].text, storyVars())}`, 'chapter');
@@ -403,7 +406,7 @@ function featChance(n) {
   if (p.crew && p.crew === n.crew) c += 0.25;
   if (n.trait === '까칠함' || n.trait === '신비주의') c -= 0.08;
   if (n.trait === '유쾌함') c += 0.06;
-  if (p.dissTarget === n.id) return 0;
+  if (inWar(n.id)) return 0;
   return clamp(c, 0.02, 0.96);
 }
 
@@ -422,6 +425,10 @@ function makeSong(opts) {
   if (!opts.title || !opts.title.trim()) return { ok: false, msg: '곡 제목을 입력하세요.' };
   const notes = [];
   let money = 0;
+  if (opts.sample === 'clear') {
+    if (p.money < 3000000) return { ok: false, msg: '샘플 클리어 비용 300만원이 부족합니다.' };
+    money += 3000000; notes.push('📀 샘플 사용 허가를 받았습니다. (300만원)');
+  }
   // 프로듀서
   let prod = null;
   if (opts.producer) {
@@ -465,6 +472,11 @@ function makeSong(opts) {
   if (th === '디스') { a.lyric += 3; a.perf += 3; }
   if (th === '우울/불안') { a.lyric += 3; a.originality += 3; a.hook -= 2; }
   if (prod) a.hook += 3;
+  const st = styleOf(opts.genre, opts.style);
+  if (st) Object.keys(st.fx).forEach(k => { a[k] += st.fx[k]; });
+  if (st && isHot(st.name)) { a.hook += 3; notes.push(`🔥 요즘 뜨는 ${st.name} 스타일입니다. 대중 반응이 빠를 겁니다.`); }
+  if (opts.sample === 'clear') { a.hook += 4; a.originality += 2; }
+  if (opts.sample === 'steal') { a.hook += 5; a.originality += 3; notes.push('🎚️ 허락 없이 샘플을 썼습니다. 곡이 뜨면 문제가 될 수도…'); }
   feats.forEach(fid => { const f = npc(fid); a.hook += 3 + f.skill * 0.05; a.perf += 2 + f.skill * 0.03; a.originality += 1; });
   if (opts.genre !== p.genre) a.originality += 3;
   if (S.myLabel) { a.sound += S.myLabel.lv.studio * 2; }
@@ -486,7 +498,15 @@ function makeSong(opts) {
     startT: null, domBase: 0, globBase: 0, decay: 0.85, boost: 0,
     dom: 0, glob: 0, totalDom: 0, totalGlob: 0, peakMelon: null, peakHot: null, critic: null, role: null
   };
+  s.style = st ? st.name : null;
+  if (opts.sample === 'steal') s.sampled = true;
+  if (th === '디스' && opts.diss && opts.diss.type) {
+    s.diss = { type: opts.diss.type, id: opts.diss.id || null, level: opts.diss.level || 'light', punch: (opts.diss.punch || '').slice(0, 80) };
+    if (s.diss.level === 'taboo') { a.lyric = Math.min(100, a.lyric + 3); }
+    notes.push(`⚔️ 디스곡 — 대상: ${dissTargetName(s.diss)} · 수위: ${DISS_LEVELS[s.diss.level].name}. 발매하면 디스전이 시작됩니다.`);
+  }
   s.note = songNote(s, titleMatch);
+  if (st && isHot(st.name)) s.note.splice(s.note.length - 1, 0, `요즘 유행하는 ${st.name} 사운드라 반응이 빠를 것 같다.`);
   S.songs.push(s);
   p.money -= money;
   S.ap -= apCost;
@@ -558,7 +578,7 @@ function computeCohesion(tracks, concept, type) {
   const qs = tracks.map(s => s.quality);
   const mean = avg(qs);
   const std = Math.sqrt(avg(qs.map(q => (q - mean) ** 2)));
-  let c = 20 + 25 * countBy('genre') + 20 * countBy('theme') + mean * 0.35 - std * 0.6;
+  let c = 20 + 25 * countBy('genre') + 20 * countBy('theme') + mean * 0.35 - std * 0.6 + (tracks.every(t => t.style) ? 6 * countBy('style') - 3 : 0);
   if (type === 'album') { if (n > 16) c -= (n - 16) * 3; if (n >= 10 && n <= 14) c += 4; }
   if (type === 'EP' && n >= 5) c += 2;
   const titles = tracks.map(s => s.title.toLowerCase());
@@ -657,6 +677,9 @@ function writeReview(outlet, s100, attrs, coh, tracks, rel) {
   if (attrs[strong] >= 62) add(2, pick(RV.strength[strong]));
   if (attrs[weak] < 65 && weak !== strong) add(2, pick(RV.weak[weak]));
   if (rel.type === 'mixtape') add(2.5, F(RV.mixtape));
+  if (titleT.style) add(1.3, fill(pick(isHot(titleT.style) ? RV_STYLE.hot : isCold(titleT.style) ? RV_STYLE.cold : RV_STYLE.normal), { style: titleT.style }));
+  if (S.flags.comebackPending) add(3, pick(RV_STYLE.comeback));
+  if ((S.flags.criticGrudge || 0) > S.t && outlet.credWeight >= 0.3) add(2.4, fill(pick(RV_STYLE.grudge), v));
   if (outlet.credWeight >= 0.5 && p.cred < -5) add(2.2, pick(RV.credLow));
   if (outlet.credWeight >= 0.5 && p.cred > 10) add(1.2, pick(RV.credHigh));
   const body = mid.sort((x, y) => y.prio - x.prio).slice(0, outlet.id === 'izm' ? 4 : 5).map(x => x.text);
@@ -685,6 +708,10 @@ function reviewRelease(rel, tracks) {
     let raw = sum(Object.keys(o.w).map(k => o.w[k] * attrs[k]));
     const cw = rel.type === 'single' ? o.coh * 0.4 : o.coh;
     let s = raw * (1 - cw) + coh * cw + o.bias + p.cred * o.credWeight + rnd(-6, 6);
+    const domStyle = (tracks.find(t => t.id === rel.titleTrackId) || tracks[0]).style;
+    if (domStyle && isHot(domStyle)) s += o.id === 'wave' ? 2 : -2;
+    if (domStyle && isCold(domStyle)) s += o.id === 'wave' ? -1 : 2.5;
+    if ((S.flags.criticGrudge || 0) > S.t && (o.id === 'rhythmer' || o.id === 'izm')) s -= 4;
     if (rel.type === 'album' && tracks.length > 18) s -= 3;
     if (tracks.length > 2 && tracks.filter(x => x.feats.length).length / tracks.length > 0.5) s -= 3;
     s = clamp(s, 5, 99);
@@ -718,7 +745,10 @@ function releaseWork(opts) {
   if (tracks.length < mn || tracks.length > mx) return { ok: false, msg: `${typeName(opts.type)}${josa(typeName(opts.type), '은')} ${mn}~${mx}곡이어야 합니다.` };
   if (tracks.some(s => s.releaseId)) return { ok: false, msg: '이미 발매된 곡이 포함되어 있습니다.' };
   if (opts.type === 'mixtape') opts.promo = 0;
+  if (onHiatus()) return { ok: false, msg: '지금은 발매할 수 없습니다.' };
   const promo = PROMO_OPTIONS[opts.promo || 0];
+  const sajaegiCost = opts.sajaegi ? 30000000 : 0;
+  if (p.money < promo.cost + sajaegiCost) return { ok: false, msg: '예산이 부족합니다.' };
   if (p.money < promo.cost) return { ok: false, msg: '홍보 예산이 부족합니다.' };
   p.money -= promo.cost;
 
@@ -769,6 +799,9 @@ function releaseWork(opts) {
       addNews(`🔥 ${p.stage}의 「${s.title}」, 숏폼 챌린지 열풍`, 'good');
       p.buzz += 12;
     }
+    if (s.style && isHot(s.style)) s.domBase *= 1.25;
+    if (opts.sajaegi) { s.domBase *= isTitle ? 2.5 : 1.5; s.decay = Math.min(0.97, s.decay + 0.02); }
+    if ((p.notoriety || 0) > 0) s.domBase *= 1 + Math.min(0.3, p.notoriety / 200);
     s.decay = clamp(0.78 + s.attrs.hook * 0.0012 + s.quality * 0.0007 - (isTitle ? 0 : 0.03), 0.72, 0.935);
     s.startT = S.t + 1;
     s.releaseId = rel.id;
@@ -804,10 +837,20 @@ function releaseWork(opts) {
   rel.reviews.forEach(r => { if (r.badge) addNews(`⭐ ${r.name}: ${p.stage} 「${rel.title}」 — ${r.display} (${r.badge})`, 'good'); });
   addNews(`💿 ${p.stage}, ${typeName(opts.type)} 「${rel.title}」 발매 (평단 지수 ${c})`, 'release');
 
-  // 디스전 해결
-  if (p.dissTarget && S.t <= p.dissDeadline) {
-    const ds = tracks.find(s => s.theme === '디스');
-    if (ds) notes.push(resolveDiss(ds));
+  // 디스곡 → 디스전
+  processDissRelease(tracks, notes);
+  // 무단 샘플링·사재기는 기록으로 남는다
+  tracks.filter(s => s.sampled).forEach(s => commitCrime('copyright', { songId: s.id }));
+  if (opts.sajaegi) {
+    p.money -= sajaegiCost;
+    commitCrime('sajaegi', { releaseId: rel.id });
+    notes.push('🕶️ 브로커가 스트리밍을 "관리"하기 시작했습니다. 첫 주 성적이 크게 오르지만, 적발되면 끝입니다.');
+  }
+  if (S.flags.comebackPending) { react('comeback_crime', 5, { title: rel.title }); S.flags.comebackPending = false; notes.push('🎤 논란 이후 첫 작품입니다. 반응이 엇갈립니다.'); }
+  if (inReflection()) {
+    p.sentiment = clamp(p.sentiment - 6, 0, 100); p.reflectUntil = S.t;
+    react('scandal', 3, {}, { weights: { hater: 3 } });
+    notes.push('🕯️ 자숙 기간 중 발매로 "반성 안 한다"는 비판이 쏟아졌습니다.');
   }
   // 레이블 할당량
   save();
@@ -843,7 +886,7 @@ function nextWeek() {
   S.songs.forEach(s => {
     if (!s.releaseId || s.startT > t) { s.dom = 0; s.glob = 0; return; }
     const age = t - s.startT;
-    const d = Math.pow(s.decay, age) * rnd(0.9, 1.1) * (1 + s.boost) * cannibal;
+    const d = Math.pow(s.decay, age) * rnd(0.9, 1.1) * (1 + s.boost) * cannibal * (isBoycotted() ? 0.6 : 1);
     s.dom = s.domBase * d; s.glob = s.globBase * d;
     s.totalDom += s.dom; s.totalGlob += s.glob;
     s.boost *= 0.82;
@@ -864,6 +907,7 @@ function nextWeek() {
   const share = p.label ? labelOf(p.label).share : S.myLabel ? 1 : 0.9;
   const income = Math.round((paidDom * 4.5 + paidGlob * 5) * share);
   p.money += income; summary.income += income; p.totalEarned += income;
+  S.yearIncome[y] = (S.yearIncome[y] || 0) + income;
   if (S.myLabel) myLabelWeekly(summary);
   summary.dom = dom; summary.glob = glob; summary.featDom = featDom;
 
@@ -920,7 +964,10 @@ function nextWeek() {
   if (w === 51) yearEndLists(y, summary);
 
   // 랜덤 이벤트 & 스토리
-  if (!p.military) { randomEvents(summary); storyEvents(summary); }
+  if (!onHiatus()) { randomEvents(summary); storyEvents(summary); }
+  warsWeekly(summary);
+  crimesWeekly(summary);
+  npcCrimeNews();
   checkChapter(summary);
   checkGoals(summary);
   // 소식함 만료
@@ -929,17 +976,16 @@ function nextWeek() {
     if (m.expires && m.expires < t) { if (m.type === 'diss') { p.sentiment -= 3; addNews(`😶 ${p.stage}, ${m.data.npcName}의 디스에 침묵… 커뮤니티 "쫄았네"`, 'bad'); } return false; }
     return true;
   });
-  if (p.dissTarget && t > p.dissDeadline) { p.dissTarget = null; }
 
   // 행동력
-  S.ap = p.military ? 0 : p.burnout ? 1 : 3;
+  S.ap = onHiatus() ? 0 : p.burnout ? 1 : 3;
   if (p.burnout) { summary.events.push('🥀 번아웃으로 이번 주는 행동력이 1밖에 없습니다.'); p.burnout = false; }
   if (p.mental < 12) {
     p.burnout = true; p.mental = 35;
     summary.events.push('😵 번아웃이 왔습니다… 다음 주는 거의 쉬어야 합니다.');
     addNews(`${p.stage}, 건강 문제로 활동 잠정 중단설`, 'bad');
   }
-  S.postsLeft = p.military ? 0 : 3;
+  S.postsLeft = onHiatus() ? 0 : 3;
   if (p.military) p.mental = clamp(p.mental + 2, 0, 100);
   if (p.money < -10000000 && R() < 0.3) summary.events.push('💳 빚이 쌓이고 있습니다. 공연이나 아르바이트로 돈을 벌어야 합니다.');
 
@@ -962,6 +1008,8 @@ function yearStart(y, summary) {
   summary.events.push(`🎆 ${y}년이 밝았습니다. ${p.stage}, ${p.age}세.`);
   // 신인 생성
   spawnRookies(y, rint(3, 4), rint(1, 2));
+  rollTrends(y);
+  taxInbox(y);
   addNews(`🌱 ${y}년, 주목할 신인들: ${S.npcs.filter(n => n.debutYear === y && n.region === 'KR').map(n => n.name).join(', ')}`, 'npc');
   // 레이블 할당량 체크
   if (p.contract && S.t - p.contract.startT > 40) {
@@ -1158,9 +1206,9 @@ function awardCandidates(a, cat, eligYear) {
   const p = S.player;
   const region = a.region;
   const genreOk = g => cat.genre ? g === cat.genre : (!a.genres || a.genres.includes(g));
-  const playerEligible = region === 'KR' || p.globalFame >= (a.minGlobal || 0);
+  const playerEligible = !isBanned() && (region === 'KR' || p.globalFame >= (a.minGlobal || 0));
   const out = [];
-  const npcRels = S.npcReleases.filter(r => yearOf(r.t) === eligYear && r.region === region);
+  const npcRels = S.npcReleases.filter(r => yearOf(r.t) === eligYear && r.region === region && !((npc(r.artistId) || {}).banUntil > S.t));
   const myRels = playerEligible ? S.releases.filter(r => yearOf(r.t) === eligYear) : [];
   const outlet = a.outlet;
   const myCritic = r => {
@@ -1403,7 +1451,7 @@ function actBond(id) {
   if (!useAP(1)) return { ok: false, msg: '행동력이 부족합니다.' };
   let g = rnd(5, 12);
   if (n.trait === '까칠함') g *= 0.6; if (n.trait === '유쾌함') g *= 1.3; if (n.trait === '신비주의') g *= 0.75;
-  if (S.player.dissTarget === n.id) g = -2;
+  if (inWar(n.id)) g = -2;
   n.rel = clamp(n.rel + g, 0, 100);
   const how = pick(['작업실에 놀러 갔다', 'DM으로 대화를 나눴다', '같이 술 한잔했다', '공연 뒤풀이에서 만났다', '같이 비트를 들으며 밤을 새웠다']);
   save();
@@ -1440,6 +1488,7 @@ const PLATFORM_NAMES = { insta: '인스타그램', x: 'X (트위터)', youtube: 
 
 function makePost({ platform, type, text, songId, targetId, budget }) {
   const p = S.player;
+  if (onHiatus()) return { ok: false, msg: '지금은 SNS를 할 수 없습니다.' };
   if (S.postsLeft <= 0) return { ok: false, msg: '이번 주 게시물 한도(3개)를 다 썼습니다.' };
   const pt = POST_TYPES[platform].find(x => x.id === type);
   if (!pt) return { ok: false, msg: '게시물 유형 오류' };
@@ -1453,6 +1502,7 @@ function makePost({ platform, type, text, songId, targetId, budget }) {
   const fol = p.followers[platform];
   let eng = pt.eng * rnd(0.6, 1.4) * (0.6 + p.sentiment / 100);
   const notes = [];
+  if (inReflection()) { p.sentiment = clamp(p.sentiment - 3, 0, 100); notes.push('🕯️ 자숙 중 SNS 활동으로 "반성 안 한다"는 비판을 받았습니다.'); }
   // 글 내용 분석
   const body = (text || '').trim();
   let viral = R() < (type === 'meme' ? 0.1 : 0.035);
@@ -1478,10 +1528,7 @@ function makePost({ platform, type, text, songId, targetId, budget }) {
     const n = npc(targetId); vars.npc = n.name;
     n.rel = clamp(n.rel - 30, 0, 100); p.buzz += 8 + n.fame / 10; p.antiRatio = clamp(p.antiRatio + 1, 0, 45);
     addNews(`⚔️ ${p.stage}, SNS로 ${n.name} 저격 "${body.slice(0, 30) || '…'}"`, 'bad');
-    if (R() < 0.45 + (n.trait === '독설가' || n.trait === '허세' ? 0.25 : 0)) {
-      notes.push(`🔥 ${n.name}${josa(n.name, '이')} 디스곡으로 응수할 예정이라는 소문이 돕니다…`);
-      scheduleDiss(n, 'response');
-    }
+    notes.push(warSns(n, body));
   }
   let songName = '';
   if (pt.needSong) {
@@ -1681,42 +1728,6 @@ function releaseCompilation({ title, songIds, cover, promo, source }) {
 }
 
 /* =========================================================
- *  디스전
- * ========================================================= */
-function scheduleDiss(n, kind) {
-  const p = S.player;
-  addInbox({
-    type: 'diss', title: `⚔️ ${n.name}의 디스곡 「${pick(['참교육', '사형선고', '부고', 'Real Talk', '체급 차이', '팩트폭행', '거품', '가면무도회', '이름값', 'No Mercy'])}」 공개`,
-    text: kind === 'response' ? `${n.name}${josa(n.name, '이')} 당신의 저격에 디스곡으로 응수했습니다. 커뮤니티가 들끓고 있습니다.` : `${n.name}${josa(n.name, '이')} 신곡에서 당신을 공개적으로 저격했습니다. "${pick(['방송 래퍼', '가사 대필 의혹', '거품 래퍼', '실력 없는 인싸', '돈만 아는 놈'])}"이라는 가사가 화제입니다.`,
-    data: { npcId: n.id, npcName: n.name }, expires: S.t + 3
-  });
-  p.buzz += 6;
-  n.rel = clamp(n.rel - 20, 0, 100);
-  addNews(`⚔️ ${n.name}, 디스곡으로 ${p.stage} 저격`, 'bad');
-  react('post_diss', 3, { npc: n.name }, { weights: { meme: 3, rival: 3 } });
-}
-
-function resolveDiss(ds) {
-  const p = S.player; const n = npc(p.dissTarget);
-  const my = ds.attrs.lyric * 0.45 + ds.attrs.perf * 0.35 + ds.attrs.hook * 0.2 + rnd(-8, 8);
-  const their = n.skill * 0.9 + rnd(-10, 10);
-  p.dissTarget = null;
-  if (my >= their) {
-    p.buzz += 20 + n.fame / 5; p.legacy += 2; p.cred += 2;
-    p.followers.x += Math.round(5000 + n.fame * 500);
-    n.fame = clamp(n.fame - 3, 4, 99);
-    addNews(`🏆 디스전 결과: 커뮤니티 "${p.stage} 완승" vs ${n.name}`, 'good');
-    react('diss_war', 6, { npc: n.name }, { weights: { meme: 2, critic: 2 } });
-    addMilestone('diss_win', `디스전 승리 (vs ${n.name})`);
-    return `⚔️ 디스곡 「${ds.title}」${josa(ds.title, '이')} ${n.name}${josa(n.name, '을')} 압도했습니다! 디스전 승리!`;
-  }
-  p.buzz += 8; p.sentiment -= 4; n.fame = clamp(n.fame + 2, 4, 99);
-  addNews(`😓 디스전 결과: ${n.name} 판정승, ${p.stage} 체면 구겨`, 'bad');
-  react('diss_lose', 5, { npc: n.name });
-  return `😓 디스곡 「${ds.title}」${josa(ds.title, '이')} ${n.name}의 공격을 넘어서지 못했습니다… 디스전 패배.`;
-}
-
-/* =========================================================
  *  소식함 (제안/이벤트)
  * ========================================================= */
 function addInbox(m) {
@@ -1732,7 +1743,7 @@ function randomEvents(summary) {
 
   // 피처링 요청
   if (p.debutT && R() < 0.04 + p.fame / 250 && !pending('feature')) {
-    const pool = S.npcs.filter(n => n.role === 'artist' && n.debutYear <= yearOf(t) && (n.region === 'KR' || p.globalFame > 25) && p.dissTarget !== n.id);
+    const pool = S.npcs.filter(n => n.role === 'artist' && n.debutYear <= yearOf(t) && (n.region === 'KR' || p.globalFame > 25) && !inWar(n.id) && !((n.banUntil || 0) > t));
     const n = weightedPick(pool, x => (1 + x.rel / 20) * (Math.abs(x.fame - p.fame) < 25 ? 3 : 1) * (x.crew && x.crew === p.crew ? 3 : 1));
     if (n) addInbox({ type: 'feature', title: `🎙️ ${n.name}의 피처링 요청`, text: `${n.name}(${n.genre}, 인지도 ${Math.round(n.fame)})${josa(n.name, '이')} 신곡 피처링을 요청했습니다. 보수 ${fmtMoney(Math.round(playerFee() * 0.6 / 10000) * 10000)}. (행동력 1 소모)`, data: { npcId: n.id, fee: Math.round(playerFee() * 0.6 / 10000) * 10000 }, expires: t + 2 });
   }
@@ -1766,11 +1777,11 @@ function randomEvents(summary) {
     addInbox({ type: 'comp', title: `📀 ${host} 참여 제안`, text: `${host}에 미발매 곡 1곡을 실어달라는 제안입니다. 참여료 ${fmtMoney(Math.round((1000000 + p.fame * 60000) / 10000) * 10000)}, 노출 효과가 있습니다.`, data: { host, fee: Math.round((1000000 + p.fame * 60000) / 10000) * 10000 }, expires: t + 3 });
   }
   // 오디션 프로그램
-  if (p.genre === '힙합' && p.fame >= 4 && p.fame <= 55 && p.tvDoneYear !== yearOf(t) && R() < 0.02 && !pending('tv')) {
+  if (['힙합', '트로트'].includes(p.genre) && p.fame >= 4 && p.fame <= 55 && p.tvDoneYear !== yearOf(t) && !isBanned() && !S.flags.tvGrudge && R() < 0.02 && !pending('tv')) {
     addInbox({ type: 'tv', title: '📺 랩 서바이벌 「더 마이크」 출연 제안', text: '국내 최대 랩 서바이벌 프로그램에서 출연 제안이 왔습니다. 인지도가 폭발할 수도, 망신을 당할 수도 있습니다. 평단 신뢰도는 하락합니다. (이번 주 행동력 전부 소모)', data: {}, expires: t + 2 });
   }
   // 광고
-  if (p.fame >= 35 && R() < p.fame / 1400 && !pending('brand')) {
+  if (p.fame >= 35 && !isBanned() && (p.notoriety || 0) < 30 && R() < p.fame / 1400 && !pending('brand')) {
     const brand = pick(['스포츠 브랜드', '이동통신사', '편의점 음료', '치킨 프랜차이즈', '패션 브랜드', '게임 회사']);
     const pay = Math.round((p.fame * p.fame * 8000 + p.globalFame * p.globalFame * 20000) / 1000000) * 1000000;
     addInbox({ type: 'brand', title: `💼 ${brand} 광고 모델 제안`, text: `${brand}에서 광고 모델 제안. 모델료 ${fmtMoney(pay)}. 올드팬들은 싫어할 수도 있습니다.`, data: { brand, pay }, expires: t + 3 });
@@ -1782,9 +1793,9 @@ function randomEvents(summary) {
     addNews(`🗞️ [인터뷰] ${p.stage} "${pick(['다음 앨범은 제 인생을 담을 겁니다', '차트보다 중요한 건 진심', '언젠간 그래미 무대에 서고 싶어요', '요즘 씬에 할 말이 많습니다', '팬들 덕분에 버팁니다'])}" — ${media}`, 'info');
   }
   // 디스
-  if (p.fame >= 15 && !p.dissTarget && !pending('diss') && R() < 0.012) {
-    const pool = S.npcs.filter(n => n.region === 'KR' && n.role === 'artist' && n.rel < 40 && ['독설가', '허세', '까칠함'].includes(n.trait) && n.crew !== p.crew);
-    if (pool.length) scheduleDiss(pick(pool), 'attack');
+  if (p.fame >= 15 && activeWars().length < 2 && !pending('diss') && R() < 0.014) {
+    const pool = S.npcs.filter(n => n.region === 'KR' && n.role === 'artist' && n.rel < 40 && ['독설가', '허세', '까칠함'].includes(n.trait) && n.crew !== p.crew && n.label !== 'mylabel' && !inWar(n.id) && n.debutYear <= yearOf(t));
+    if (pool.length) npcStartsWar(pick(pool));
   }
   // 스캔들
   if (p.fame >= 30 && R() < 0.004 && !pending('scandal')) {
@@ -1809,9 +1820,24 @@ function resolveInbox(id, choice, extra = {}) {
   const done = (res) => { S.inbox = S.inbox.filter(x => x.id !== id); save(); return res; };
   const d = m.data;
   if (m.type === 'story') return resolveStory(m, choice);
+  if (m.type === 'case') {
+    const r = choice === 'lawyer1' ? hireLawyer(d.caseId, 1) : choice === 'lawyer2' ? hireLawyer(d.caseId, 2) : setPlea(d.caseId, choice);
+    const cs = S.cases.find(c => c.id === d.caseId);
+    if (cs && cs.plea && cs.lawyer >= 1) S.inbox = S.inbox.filter(x => x.id !== id);
+    save(); return r;
+  }
+  if (m.type === 'civil') { S.inbox = S.inbox.filter(x => x.id !== id); return resolveCivil(d.caseId, choice); }
+  if (m.type === 'tax') { const r = resolveTax(m, choice); S.inbox = S.inbox.filter(x => x.id !== id); save(); return r; }
+  if (m.type === 'truce') {
+    S.inbox = S.inbox.filter(x => x.id !== id);
+    const w = S.wars.find(x => x.id === d.warId);
+    if (choice === 'accept' && w && w.status === 'active') { endWar(w, 'truce', '화해'); save(); return { ok: true, msg: '화해했습니다. 디스전이 끝났습니다.' }; }
+    if (w) w.momentum = clamp(w.momentum + 4, -100, 100);
+    save(); return { ok: true, msg: '화해 제안을 거절했습니다. 전쟁은 계속됩니다.' };
+  }
   if (choice === 'decline') {
     if (m.type === 'feature') { const n = npc(d.npcId); n.rel = clamp(n.rel - 4, 0, 100); }
-    if (m.type === 'diss') { p.sentiment -= 3; addNews(`😶 ${p.stage}, ${d.npcName}의 디스에 무대응`, 'info'); }
+    if (m.type === 'diss') { const w = S.wars.find(x => x.id === d.warId); if (w && w.status === 'active') endWar(w, 'ignored', '무대응'); }
     if (m.type === 'scandal') { p.sentiment -= 5; addNews(`🤐 ${p.stage}, 논란에 침묵… 비판 거세져`, 'bad'); react('scandal', 2); }
     return done({ ok: true, msg: '거절했습니다.' });
   }
@@ -1878,8 +1904,7 @@ function resolveInbox(id, choice, extra = {}) {
     }
     case 'diss': {
       if (choice === 'song') {
-        p.dissTarget = d.npcId; p.dissDeadline = S.t + 6;
-        return done({ ok: true, msg: `6주 안에 주제가 '디스'인 곡을 발매하면 디스전이 성사됩니다. (${d.npcName} 대상)` });
+        return done({ ok: true, msg: `작업실에서 주제 '디스', 대상 ${d.npcName}(으)로 곡을 만들어 발매하세요. 마감까지 ${Math.max(0, (S.wars.find(x => x.id === d.warId) || { deadline: S.t }).deadline - S.t)}주.`, openDiss: d.npcId });
       }
       if (choice === 'sns') {
         S.postsLeft = Math.max(1, S.postsLeft);
@@ -2161,7 +2186,13 @@ function applyFx(fx, out) {
   if (fx.mentorRel && S.mentorId) { const m = npc(S.mentorId); m.rel = clamp(m.rel + fx.mentorRel, 0, 100); }
   if (fx.rivalRel && S.rivalId) { const r = npc(S.rivalId); r.rel = clamp(r.rel + fx.rivalRel, 0, 100); }
   if (fx.react) react(fx.react, 3);
-  if (fx.diss && S.rivalId) { p.dissTarget = S.rivalId; p.dissDeadline = S.t + 6; out.notes.push('⚔️ 6주 안에 주제가 \'디스\'인 곡을 발매하세요.'); }
+  if (fx.diss && S.rivalId && !inWar(S.rivalId)) { const w = newWar(npc(S.rivalId), 'player'); w.awaiting = 'player'; out.notes.push('⚔️ 6주 안에 라이벌을 겨냥한 디스곡을 발매하세요. 못 하면 체면이 구겨집니다.'); }
+  if (fx.crime) {
+    const cr = commitCrime(fx.crime);
+    const caught = { dui: ['음주 단속에 걸렸다. 경찰관의 손전등 불빛이 얼굴을 비췄다.', '무사히 집에 도착했다. 심장이 아직도 쿵쾅거린다. 다시는 이러지 말자.'], assault: ['누군가 찍은 영상이 이미 퍼지고 있었다.', '상대는 코피를 쏟고 도망쳤다. 아무도 찍지 않은 것 같다… 아마도.'], drug: ['', '그날 밤의 기억은 군데군데 비어 있다. 남은 건 낯선 멜로디 몇 개와 불안감이었다.'] }[fx.crime] || ['', ''];
+    out.res = cr.detected ? caught[0] : caught[1];
+    if (cr.extra.accident) out.res = '쾅. 브레이크를 밟았을 땐 이미 늦었다. 접촉 사고. 경찰이 도착했다.';
+  }
   if (fx.loseDemo) { const un = unreleasedSongs(); if (un.length) { const lost = pick(un); S.songs = S.songs.filter(x => x !== lost); out.notes.push(`💾 데모 「${lost.title}」${josa(lost.title, '을')} 잃었습니다.`); } }
   if (fx.military) { enlist(); out.notes.push('🪖 78주 동안 활동할 수 없습니다. 홈 화면에서 전역까지 빠르게 넘길 수 있습니다.'); }
 }
@@ -2262,9 +2293,14 @@ function epilogue() {
 
 /* ---------- 이전 버전 세이브 보정 ---------- */
 function migrate() {
-  const d = { flags: {}, flagT: {}, story: [], npcWins: {}, goalsDone: {}, chapter: 0, myLabel: null, rivalId: null, mentorId: null, lastRelCritic: null, storyDone: {} };
+  const d = { flags: {}, flagT: {}, story: [], npcWins: {}, goalsDone: {}, chapter: 0, myLabel: null, rivalId: null, mentorId: null, lastRelCritic: null, storyDone: {}, wars: [], crimes: [], cases: [], trends: null, yearIncome: {} };
   Object.keys(d).forEach(k => { if (S[k] === undefined) S[k] = d[k]; });
   if (!S.player.inspiration) S.player.inspiration = [];
   if (S.player.military === undefined) S.player.military = null;
+  const pd = { notoriety: 0, prison: null, banUntil: 0, boycottUntil: 0, reflectUntil: 0, record: [] };
+  Object.keys(pd).forEach(k => { if (S.player[k] === undefined) S.player[k] = pd[k]; });
+  if (!S.trends) rollTrends(yearOf(S.t));
+  const parodies = new Set(NPC_KR.concat(NPC_GLOBAL).map(n => n.name));
+  S.npcs.forEach(n => { if (n.parody === undefined) n.parody = parodies.has(n.name); });
   S.songs.forEach(s => { if (!s.note) s.note = songNote(s, titleFitsTheme(s.title, s.theme)); });
 }

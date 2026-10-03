@@ -14,7 +14,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 
 const TABS = [
   ['home', '🏠', '홈'], ['story', '📖', '스토리'], ['studio', '🎛️', '작업실'], ['disco', '💿', '디스코그래피'], ['charts', '📊', '차트'],
-  ['critics', '📝', '평단'], ['awards', '🏆', '시상식'], ['artists', '🤝', '아티스트'], ['label', '🏢', '레이블·크루'],
+  ['critics', '📝', '평단'], ['awards', '🏆', '시상식'], ['artists', '🤝', '아티스트'], ['beef', '⚔️', '디스·사건'], ['label', '🏢', '레이블·크루'],
   ['sns', '📱', 'SNS'], ['fans', '💬', '팬 반응'], ['inbox', '📬', '소식함'], ['news', '📰', '뉴스']
 ];
 
@@ -84,6 +84,8 @@ function render() {
       <span class="chip" title="총 팔로워">👥 <b>${fmtNum(fol)}</b></span>
       <span class="chip" title="멘탈">🧠 <b class="${p.mental < 30 ? 'bad-t' : ''}">${Math.round(p.mental)}</b></span>
       <span class="chip" title="팬 여론">💜 <b>${Math.round(p.sentiment)}</b></span>
+      ${activeWars().length ? `<span class="chip" title="진행 중인 디스전">⚔️ <b>${activeWars().length}</b></span>` : ''}
+      ${S.cases.some(c => c.status === 'investigation') ? '<span class="chip" title="진행 중인 사건" style="border-color:#7f1d1d">⚖️ <b class="bad-t">수사 중</b></span>' : ''}
     </div>
     <button class="btn sm ghost" data-act="menu">☰ 메뉴</button>
     <button class="btn primary" data-act="next-week">다음 주 ▶</button>
@@ -98,6 +100,7 @@ function renderTab() {
   switch (UI.tab) {
     case 'home': return viewHome();
     case 'story': return viewStory();
+    case 'beef': return viewBeef();
     case 'studio': return viewStudio();
     case 'disco': return viewDisco();
     case 'charts': return viewCharts();
@@ -177,6 +180,8 @@ function viewHome() {
   const ch = CHAPTERS[S.chapter];
   return `
   ${p.military ? `<div class="card mb" style="border-color:#4d7c0f;background:#15200d"><h3>🪖 군 복무 중 <span class="sub">전역까지 ${p.military.endT - S.t}주</span></h3><div class="small muted">복무 중에는 활동할 수 없습니다. 차트와 시상식, 씬은 계속 돌아갑니다.</div><div class="row mt"><button class="btn primary" data-act="ff-military">⏩ 전역까지 넘기기</button></div></div>` : ''}
+  ${p.prison ? `<div class="card mb" style="border-color:#7f1d1d;background:#200d0d"><h3>🔒 수감 중 <span class="sub">출소까지 ${p.prison.endT - S.t}주</span></h3><div class="small muted">교도소에서는 활동할 수 없습니다. 바깥세상은 계속 돌아갑니다.</div><div class="row mt"><button class="btn primary" data-act="ff-military">⏩ 출소까지 넘기기</button></div></div>` : ''}
+  ${statusPills()}
   <div class="card mb" style="background:linear-gradient(135deg,#1d1530,#171724)"><div class="row"><span class="pill acc">📖 ${esc(ch.title)}</span><span class="small muted grow">${esc(fill(ch.text, storyVars()))}</span><button class="btn sm" data-act="tab" data-tab="story">스토리 ▶</button></div>
   ${(p.inspiration || []).filter(x => x.until >= S.t).length ? `<div class="row mt">${p.inspiration.filter(x => x.until >= S.t).map(x => `<span class="pill gold" title="${x.until - S.t}주 남음">💡 ${esc(x.theme)} 영감 +${x.bonus}</span>`).join('')}<span class="tiny dim">같은 주제로 곡을 쓰면 반영됩니다</span></div>` : ''}</div>
   <div class="grid g2">
@@ -215,7 +220,8 @@ function viewHome() {
           <button class="act" data-act="global-promo" ${ap < 2 || p.fame < 35 ? 'disabled' : ''}><b>✈️ 해외 프로모션</b><span>인지도 35+, 500만원 (2)</span></button>
           <button class="act" data-act="release-form" ${unreleasedSongs().length ? '' : 'disabled'}><b>💿 발매하기</b><span>미발매 ${unreleasedSongs().length}곡</span></button>
           <button class="act" data-act="tab" data-tab="sns"><b>📱 SNS 게시</b><span>이번 주 ${S.postsLeft}회 남음</span></button>
-          <button class="act" data-act="tour-menu" ${p.military ? 'disabled' : ''}><b>🎫 투어·굿즈</b><span>${tourCooldown() ? `투어 ${tourCooldown()}주 후` : '공연 기획 (3)'}</span></button>
+          <button class="act" data-act="night-menu" ${onHiatus() ? 'disabled' : ''}><b>🌃 밤의 유혹</b><span>위험한 선택들</span></button>
+          <button class="act" data-act="tour-menu" ${onHiatus() ? 'disabled' : ''}><b>🎫 투어·굿즈</b><span>${tourCooldown() ? `투어 ${tourCooldown()}주 후` : '공연 기획 (3)'}</span></button>
         </div>
       </div>
       <div class="card">
@@ -282,13 +288,25 @@ function songFormHtml() {
   return `<h2>🎼 새 곡 작업</h2>
   <div class="grid g2">
     <label class="f"><span>곡 제목 *</span><input id="sf-title" maxlength="40" placeholder="예: 서울의 밤"></label>
-    <label class="f"><span>장르</span><select id="sf-genre">${GENRES.map(g => `<option ${g === p.genre ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
-    <label class="f"><span>주제</span><select id="sf-theme">${THEMES.map(t => { const i = (p.inspiration || []).find(x => x.theme === t && x.until >= S.t); return `<option value="${t}" ${i ? 'selected' : ''}>${i ? `💡 ${t} (영감 +${i.bonus})` : t}</option>`; }).join('')}</select></label>
+    <label class="f"><span>장르</span><select id="sf-genre" data-act-change="sf-genre">${GENRES.map(g => `<option ${g === p.genre ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+    <label class="f"><span>스타일 <span class="dim">🔥 = 올해 트렌드</span></span><select id="sf-style">${styleOptions(p.genre)}</select></label>
+    <label class="f"><span>샘플링</span><select id="sf-sample"><option value="none">샘플 없음</option><option value="clear">정식 클리어 (300만원, 훅·독창성↑)</option><option value="steal">🚨 무단 샘플링 (무료, 훅·독창성↑↑, 소송 위험)</option></select></label>
+    <label class="f"><span>주제</span><select id="sf-theme" data-act-change="sf-theme">${THEMES.map(t => { const i = (p.inspiration || []).find(x => x.theme === t && x.until >= S.t); return `<option value="${t}" ${i ? 'selected' : ''}>${i ? `💡 ${t} (영감 +${i.bonus})` : t}</option>`; }).join('')}</select></label>
     <label class="f"><span>작업 방식</span><select id="sf-deep"><option value="0">일반 작업 (행동력 1)</option><option value="1" ${S.ap < 2 ? 'disabled' : ''}>공들여 작업 (행동력 2, 완성도↑)</option></select></label>
     <label class="f"><span>프로듀서</span><select id="sf-prod" data-act-change="sf-cost"><option value="">셀프 프로듀싱 (무료, 내 프로듀싱 능력 ${Math.round(p.skills.produce)})</option>${prods.map(n => `<option value="${n.id}">${esc(n.name)} (실력 ${n.skill}) — ${fmtMoney(Math.round(npcFee(n) * 0.7 / 10000) * 10000)} · 수락 ${Math.round(Math.min(1, featChance(n) + 0.15) * 100)}%</option>`).join('')}</select></label>
     <label class="f"><span>피처링 1</span><select id="sf-f1" data-act-change="sf-cost"><option value="">없음</option>${arts.map(optA).join('')}</select></label>
     <label class="f"><span>피처링 2</span><select id="sf-f2" data-act-change="sf-cost"><option value="">없음</option>${arts.map(optA).join('')}</select></label>
     <div class="col"><span class="small muted bold">예상 비용</span><div class="big-num" id="sf-cost">0원</div><div class="tiny dim">거절당하면 비용이 들지 않습니다. 보유 ${fmtMoney(p.money)}</div></div>
+  </div>
+  <div id="sf-diss" class="review mt" style="display:none;border-color:#7f1d1d">
+    <div class="bold mb">⚔️ 디스곡 설정</div>
+    <div class="grid g2">
+      <label class="f"><span>디스 대상</span><select id="sf-dtype" data-act-change="sf-dtype">${Object.keys(DISS_TARGET_TYPES).map(k => `<option value="${k}">${DISS_TARGET_TYPES[k]}</option>`).join('')}</select></label>
+      <label class="f"><span>상대</span><select id="sf-dtarget">${dissTargetOptions('artist')}</select></label>
+      <label class="f"><span>수위</span><select id="sf-dlevel">${Object.keys(DISS_LEVELS).map(k => `<option value="${k}">${DISS_LEVELS[k].name} — ${DISS_LEVELS[k].desc}</option>`).join('')}</select></label>
+      <label class="f"><span>대표 펀치라인 (뉴스·커뮤니티에 인용됨, 상대 이름을 넣으면 효과↑)</span><input id="sf-dpunch" maxlength="80" placeholder="예: 네 커리어는 리메이크, 내 건 오리지널"></label>
+    </div>
+    <div class="tiny dim mt">발매하면 디스전이 시작됩니다. 상대가 답디스를 내면 6주 안에 응수해야 합니다. 씬 전체를 저격하면 여러 명과 동시에 싸우게 됩니다.</div>
   </div>
   <div class="tiny dim mt">주제 효과 — 플렉스/파티: 훅↑ 가사↓ · 사회비판/자전적 서사/가족: 가사↑ · 실험적: 독창성↑↑ 훅↓ · 사랑/청춘: 훅↑ · 디스: 디스전용 · 우울/불안: 가사·독창성↑</div>
   <div class="foot"><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="make-song">작업 시작 🎧</button></div>`;
@@ -311,6 +329,7 @@ function releaseFormHtml(comp) {
       <label class="f"><span>${comp ? '컴필레이션' : '작품'} 제목 *</span><input id="rf-title" maxlength="40" value="${esc(r.title)}" data-act-input="rf-title" placeholder="예: 서울, 새벽 세 시"></label>
       ${comp ? '' : `<label class="f"><span>앨범 소개 / 컨셉 (20자 이상이면 응집력 보너스)</span><textarea id="rf-concept" maxlength="300" data-act-input="rf-concept" placeholder="이 앨범은 ...">${esc(r.concept)}</textarea></label>`}
       ${r.type === 'mixtape' ? '<div class="small muted">🎁 믹스테이프는 사운드클라우드에 무료 공개됩니다. 수익·멜론/빌보드 차트는 없지만 평단 신뢰도와 찐팬이 늘고, 리드머가 리뷰합니다.</div>' : ''}
+      ${r.type !== 'mixtape' && !comp ? `<label class="row small" style="cursor:pointer"><input type="checkbox" data-act-change="rf-sajaegi" ${r.sajaegi ? 'checked' : ''}> 🕶️ <span class="bad-t">브로커를 통한 음원 사재기 (3,000만원)</span> <span class="tiny dim">— 스트리밍 대폭↑, 적발 시 형사 처벌·차트 기록 박탈</span></label>` : ''}
       <label class="f" ${r.type === 'mixtape' ? 'style="display:none"' : ''}><span>홍보 예산</span><select id="rf-promo" data-act-change="rf-promo">${PROMO_OPTIONS.map((o, i) => `<option value="${i}" ${r.promo === i ? 'selected' : ''} ${o.cost > S.player.money ? 'disabled' : ''}>${o.label} — 노출 x${o.mult}</option>`).join('')}</select></label>
     </div>
   </div>
@@ -386,6 +405,7 @@ function viewCharts() {
     bb200: ['💿 Billboard 200', '앨범 환산 판매량(유닛) 기준', 'Units']
   }[c];
   return `<div class="page-title">📊 차트 <span class="small muted">${dateLabel(S.charts.t || S.t)} 기준</span></div>
+  ${S.trends ? `<div class="card mb row"><b>🔥 ${S.trends.year} 트렌드</b>${S.trends.hot.map(h => `<span class="pill gold">${esc(h.style)} <span class="dim">${h.genre}</span></span>`).join('')}<b class="mt" style="margin-left:8px">🧊 침체</b>${S.trends.cold.map(h => `<span class="pill">${esc(h.style)}</span>`).join('')}<span class="tiny dim">트렌드 스타일은 스트리밍↑, 평단은 편승을 싫어하고 침체 장르의 고집을 좋아합니다.</span></div>` : ''}
   <div class="tabs">${[['melon', '🍈 멜론 TOP 100'], ['hot100', '🇺🇸 HOT 100'], ['bb200', '💿 빌보드 200']].map(([id, n]) => `<button class="tab ${c === id ? 'on' : ''}" data-act="chart-tab" data-c="${id}">${n}</button>`).join('')}</div>
   <div class="card"><h3>${meta[0]} <span class="sub">${meta[1]}</span></h3>
   ${list.length ? `<div class="tbl-wrap"><table><tr><th>순위</th><th></th><th>${c === 'bb200' ? '앨범' : '곡'}</th><th>아티스트</th><th class="right">${meta[2]}</th><th class="right">최고</th><th class="right">주</th></tr>
@@ -452,13 +472,14 @@ function viewArtists() {
     const ch = featChance(n);
     return `<div class="card">
       <div class="row"><div class="avatar" style="width:42px;height:42px;font-size:17px;background:linear-gradient(135deg,hsl(${(n.name.charCodeAt(0) * 37) % 360},60%,45%),hsl(${(n.name.charCodeAt(1 % n.name.length) * 53) % 360},60%,35%))">${esc(n.name.slice(0, 1))}</div>
-      <div class="grow"><div class="bold">${esc(n.name)} ${n.debutYear === yearOf(S.t) ? '<span class="pill good">신인</span>' : ''}${p.dissTarget === n.id ? '<span class="pill bad">디스전</span>' : ''}</div><div class="tiny muted">${n.genre} · ${n.trait}${lab ? ' · ' + esc(lab.name) : ''}${crew ? ' · ' + esc(crew.name) : ''}</div></div></div>
+      <div class="grow"><div class="bold">${esc(n.name)} ${n.debutYear === yearOf(S.t) ? '<span class="pill good">신인</span>' : ''}${inWar(n.id) ? '<span class="pill bad">⚔️ 디스전</span>' : ''}${(n.banUntil || 0) > S.t ? '<span class="pill bad">🚨 활동 중단</span>' : ''}</div><div class="tiny muted">${n.genre} · ${n.trait}${lab ? ' · ' + esc(lab.name) : ''}${crew ? ' · ' + esc(crew.name) : ''}</div></div></div>
       ${n.rival || n.mentor ? `<div class="row mt">${n.rival ? '<span class="pill bad">⚔️ 라이벌</span>' : ''}${n.mentor ? '<span class="pill good">🧔 멘토</span>' : ''}</div>` : ''}
       ${n.bio ? `<div class="small muted mt">${esc(n.bio)}</div>` : ''}
       <div class="col mt" style="gap:4px">${statRow('인지도', n.fame)}${statRow('실력', n.skill, 'b')}${statRow('친밀도', n.rel, n.rel >= 60 ? 'g' : n.rel < 20 ? 'r' : 'y')}</div>
       <div class="tiny muted mt">${n.role === 'producer' ? '프로듀싱' : '피처링'} 비용 ${fmtMoney(n.role === 'producer' ? Math.round(npcFee(n) * 0.7 / 10000) * 10000 : npcFee(n))} · 수락 확률 ${Math.round(Math.min(1, ch + (n.role === 'producer' ? 0.15 : 0)) * 100)}%</div>
       ${last ? `<div class="tiny dim">최근작: 「${esc(last.title)}」 (${dateLabel(last.t)})</div>` : ''}
       <div class="row mt"><button class="btn sm" data-act="bond" data-id="${n.id}" ${S.ap < 1 ? 'disabled' : ''}>🍻 친분 쌓기 (1)</button>
+      ${n.region === 'KR' && n.role === 'artist' ? `<button class="btn sm bad" data-act="diss-song" data-id="${n.id}" ${S.ap < 1 ? 'disabled' : ''}>⚔️ 디스곡</button>` : ''}
       ${S.myLabel && n.region === 'KR' && n.label !== 'mylabel' ? `<button class="btn sm" data-act="sign" data-id="${n.id}" ${S.ap < 1 ? 'disabled' : ''} title="계약금 ${fmtMoney(signCost(n))}">🏷️ 영입 (${Math.round(signChance(n) * 100)}%)</button>` : ''}
       ${myCrew && myCrew.own && n.crew !== myCrew.id && n.region === 'KR' ? `<button class="btn sm" data-act="recruit" data-id="${n.id}" ${n.rel < 55 || S.ap < 1 ? 'disabled' : ''}>🚩 크루 영입 (${Math.round(recruitChance(n) * 100)}%)</button>` : ''}</div>
     </div>`;
@@ -587,7 +608,11 @@ function inboxEl(m) {
     case 'comp': btns = `<select id="comp-song-${m.id}" style="width:auto">${unreleasedSongs().map(s => `<option value="${s.id}">${esc(s.title)} (${grade(s.quality)})</option>`).join('')}</select>` + b('accept', '이 곡으로 참여', 'good') + b('decline', '거절'); break;
     case 'tv': btns = b('accept', '출연한다', 'good') + b('decline', '거절'); break;
     case 'brand': btns = b('accept', '광고 촬영', 'good') + b('decline', '거절'); break;
-    case 'diss': btns = b('song', '🔥 디스곡으로 응수', 'good') + b('sns', '✖️ SNS로 응수') + b('decline', '무시'); break;
+    case 'diss': btns = b('song', '🔥 답디스 작업하기', 'good') + b('sns', '✖️ SNS 장외전') + b('decline', '무시 (패배 처리)'); break;
+    case 'case': { const cs = S.cases.find(c => c.id === m.data.caseId); btns = cs && !cs.plea ? b('admit', '🙇 혐의 인정·사과') + b('deny', '🗣️ 혐의 부인') : ''; btns += cs && cs.lawyer < 1 ? b('lawyer1', '⚖️ 변호사 선임 (5천만원)') : ''; btns += cs && cs.lawyer < 2 ? b('lawyer2', '🏛️ 대형 로펌 (2억원)') : ''; break; }
+    case 'civil': btns = b('settle', '🤝 합의') + b('fight', '⚖️ 법정 다툼'); break;
+    case 'tax': btns = b('honest', '성실 신고', 'good') + b('trick', '🚨 "절세" 꼼수 (40% 누락)') + b('evade', '🚨 신고 누락'); break;
+    case 'truce': btns = b('accept', '🤝 화해', 'good') + b('decline', '거절'); break;
     case 'scandal': btns = b('apologize', '🙇 사과문 게시') + b('legal', '⚖️ 법적 대응') + b('decline', '무대응'); break;
     case 'story': { const ev = STORY_EVENTS.find(e => e.id === m.data.eventId); btns = ev ? ev.choices.map(c => b(c.id, esc(c.label), 'good')).join('') : ''; break; }
   }
@@ -718,6 +743,79 @@ function tourHtml() {
   <div class="foot"><button class="btn" data-act="close">닫기</button></div>`;
 }
 
+
+/* ---------- 디스·사건 헬퍼 ---------- */
+function styleOptions(genre) {
+  return (STYLES[genre] || []).map(st => `<option value="${esc(st.name)}">${isHot(st.name) ? '🔥 ' : isCold(st.name) ? '🧊 ' : ''}${esc(st.name)}</option>`).join('');
+}
+function dissTargetOptions(type) {
+  const kr = S.npcs.filter(n => n.region === 'KR' && n.role === 'artist' && n.debutYear <= yearOf(S.t));
+  if (type === 'artist') return kr.sort((a, b) => b.fame - a.fame).map(n => `<option value="${n.id}">${esc(n.name)} (⭐${Math.round(n.fame)}, ${n.trait}${n.rival ? ', 라이벌' : ''}${inWar(n.id) ? ', 디스전 중' : ''})</option>`).join('');
+  if (type === 'label') return LABELS.filter(l => kr.some(n => n.label === l.id)).map(l => `<option value="${l.id}">${esc(l.name)} (${kr.filter(n => n.label === l.id).length}명)</option>`).join('');
+  if (type === 'crew') return S.crews.filter(c => !c.own && c.id !== S.player.crew).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  return '';
+}
+function presetDiss(npcId) {
+  const th = $('#sf-theme'); if (!th) return;
+  th.value = '디스'; $('#sf-diss').style.display = '';
+  $('#sf-dtype').value = 'artist'; $('#sf-dtarget').innerHTML = dissTargetOptions('artist'); $('#sf-dtarget').value = npcId;
+  $('#sf-dlevel').value = 'hard';
+  const n = npc(npcId); if (n) $('#sf-title').value = pick(DISS_TRACK_TITLES);
+}
+function statusPills() {
+  const p = S.player, out = [];
+  if (isBanned()) out.push(`<span class="pill bad" title="시상식 후보·방송·광고에서 제외">🚫 퇴출 ${p.banUntil - S.t}주</span>`);
+  if (isBoycotted()) out.push(`<span class="pill bad" title="스트리밍 -40%">📉 불매 ${p.boycottUntil - S.t}주</span>`);
+  if (inReflection()) out.push(`<span class="pill" title="발매·SNS 시 역풍">🕯️ 자숙 ${p.reflectUntil - S.t}주</span>`);
+  if ((p.notoriety || 0) >= 5) out.push(`<span class="pill bad" title="악명: 화제성↑, 광고·방송↓">😈 악명 ${Math.round(p.notoriety)}</span>`);
+  if ((p.record || []).length) out.push(`<span class="pill bad">📁 전과 ${p.record.filter(r => r.verdict !== 'cleared').length}범</span>`);
+  activeWars().forEach(w => out.push(`<span class="pill bad">⚔️ vs ${esc(artistName(w.npcId))} ${pollOf(w)}%</span>`));
+  return out.length ? `<div class="row mb">${out.join('')}<button class="btn sm" data-act="tab" data-tab="beef">자세히</button></div>` : '';
+}
+function nightHtml() {
+  return `<h2>🌃 밤의 유혹</h2>
+  <div class="small muted mb">자유에는 대가가 따릅니다. 아래 선택은 언제든 수사·재판으로 이어질 수 있고, 걸리면 레이블 해지·불매·시상식 퇴출·수감까지 갈 수 있습니다.</div>
+  <div class="col">
+    <div class="review row"><div class="grow"><div class="bold">💊 위험한 애프터파티</div><div class="tiny muted">멘탈 +15, '실험적' 영감 +10 · 40주 동안 적발 위험 (마약 투약)</div></div><button class="btn sm bad" data-act="drug" ${S.ap < 1 ? 'disabled' : ''}>간다 (1)</button></div>
+    <div class="review row"><div class="grow"><div class="bold">🎰 불법 도박장</div><div class="tiny muted">42% 확률로 판돈 2배 · 20주 동안 적발 위험</div></div>${[1000000, 10000000, 100000000].map(v => `<button class="btn sm bad" data-act="gamble" data-v="${v}" ${S.ap < 1 || S.player.money < v ? 'disabled' : ''}>${fmtMoney(v)}</button>`).join('')}</div>
+  </div>
+  <div class="tiny dim mt">그 밖에: 곡 작업의 '무단 샘플링', 발매의 '음원 사재기', 연초 세금 신고, 디스곡의 '금기' 수위, 그리고 예고 없이 찾아오는 유혹들(음주운전, 클럽 시비…)</div>
+  <div class="foot"><button class="btn" data-act="close">돌아가기</button></div>`;
+}
+
+/* ---------- 디스·사건 탭 ---------- */
+function viewBeef() {
+  const p = S.player;
+  const act = activeWars(), past = S.wars.filter(w => w.status !== 'active');
+  const resName = { won: '🏆 승리', lost: '😓 패배', truce: '🤝 화해', ignored: '😶 무대응' };
+  const warCard = w => {
+    const n = npc(w.npcId), poll = pollOf(w);
+    return `<div class="card"><h3>⚔️ vs ${esc(n.name)} <span class="sub">${dateLabel(w.startT)} 시작 · ${w.rounds.length}라운드</span></h3>
+      <div class="row small"><b>${esc(p.stage)} ${poll}%</b><div class="grow bar" style="height:12px"><i style="width:${poll}%"></i></div><b>${100 - poll}% ${esc(n.name)}</b></div>
+      <div class="list mt">${w.rounds.map(r => `<div class="row small"><span class="pill ${r.by === 'player' ? 'acc' : 'bad'}">${r.by === 'player' ? esc(p.stage) : esc(n.name)}</span><span class="grow">「${esc(r.title)}」 <span class="muted">${esc(r.punch || '')}</span></span><span class="gold-t">${r.score}점</span></div>`).join('') || '<div class="small muted">아직 아무도 곡을 내지 않았습니다.</div>'}</div>
+      <div class="small mt ${w.awaiting === 'player' ? 'warn-t' : 'muted'}">${w.awaiting === 'player' ? `⏳ 당신의 차례 — ${Math.max(0, w.deadline - S.t)}주 안에 답디스를 내지 않으면 패배` : `⏳ ${esc(n.name)}의 답장을 기다리는 중 (${Math.max(0, w.deadline - S.t)}주 안에 답이 없으면 승리)`}</div>
+      <div class="row mt"><button class="btn sm bad" data-act="diss-song" data-id="${n.id}" ${S.ap < 1 ? 'disabled' : ''}>🔥 답디스 작업</button><button class="btn sm" data-act="war-sns" data-id="${n.id}">✖️ SNS 장외전</button><button class="btn sm" data-act="truce" data-id="${w.id}">🤝 화해 제안</button></div></div>`;
+  };
+  const cases = S.cases.filter(c => c.status === 'investigation');
+  return `<div class="page-title">⚔️ 디스·사건</div>
+  <div class="card mb small muted">디스곡은 <b>작업실 → 주제 '디스'</b>에서 대상과 수위를 정해 만들고, 발매하면 디스전이 시작됩니다. 아티스트 탭의 ⚔️ 버튼으로 바로 겨냥할 수도 있어요. 상대가 답하지 못하면 승리, 6주 안에 응수하지 못하면 패배입니다. 커뮤니티 투표가 70%p 이상 벌어지면 KO.</div>
+  ${statusPills()}
+  <h3 class="mb">🔥 진행 중인 디스전 (${act.length})</h3>
+  ${act.length ? `<div class="grid g2">${act.map(warCard).join('')}</div>` : '<div class="card empty">진행 중인 디스전이 없습니다.</div>'}
+  <h3 class="mb mt">⚖️ 진행 중인 사건 (${cases.length})</h3>
+  ${cases.length ? `<div class="grid g2">${cases.map(cs => { const c = CRIMES[cs.crime]; return `<div class="card" style="border-color:#7f1d1d"><h3>🚨 ${esc(c.name)} <span class="sub">${c.civil ? '민사' : '형사'} · 결과까지 ${Math.max(0, cs.trialT - S.t)}주</span></h3>
+      <div class="small">입장: <b>${cs.plea === 'admit' ? '혐의 인정' : cs.plea === 'deny' ? '혐의 부인' : '미정'}</b> · 변호인: <b>${['없음', '형사 전문 변호사', '대형 로펌'][cs.lawyer]}</b> · 전과 ${priors()}범${c.civil ? ` · 청구액 ${fmtMoney(cs.amount || 0)}` : ''}</div>
+      ${c.civil ? '<div class="tiny dim mt">소식함에서 합의하거나 법정 다툼을 선택하세요. 기한이 지나면 자동으로 재판이 열립니다.</div>' : `<div class="row mt">${!cs.plea ? `<button class="btn sm" data-act="case-act" data-id="${cs.id}" data-c="admit">🙇 혐의 인정</button><button class="btn sm" data-act="case-act" data-id="${cs.id}" data-c="deny">🗣️ 혐의 부인</button>` : ''}${cs.lawyer < 1 ? `<button class="btn sm" data-act="case-act" data-id="${cs.id}" data-c="lawyer1">⚖️ 변호사 (5천만원)</button>` : ''}${cs.lawyer < 2 ? `<button class="btn sm" data-act="case-act" data-id="${cs.id}" data-c="lawyer2">🏛️ 대형 로펌 (2억원)</button>` : ''}</div>
+      <div class="tiny dim mt">인정하면 형이 가벼워지고, 부인하면 무혐의를 노릴 수 있지만 실패 시 더 무거워집니다. 전과가 있으면 불리합니다.</div>`}</div>`; }).join('')}</div>` : '<div class="card empty">진행 중인 사건이 없습니다. 깨끗하네요.</div>'}
+  <div class="grid g2 mt">
+    <div class="card"><h3>🕯️ 자숙</h3><div class="small muted mb">논란 후 활동을 멈추면 여론이 서서히 회복되고, 끝나면 불매가 풀립니다. 기간 중에 발매하면 역풍.</div>
+      <div class="row">${[12, 26, 52].map(w => `<button class="btn sm" data-act="reflect" data-v="${w}" ${inReflection() ? 'disabled' : ''}>${w}주 자숙</button>`).join('')}</div></div>
+    <div class="card"><h3>📁 전과 기록</h3>${(p.record || []).length ? `<div class="list">${p.record.map(r => `<div class="row small"><span class="grow">${esc(r.crime)}</span><span class="${r.verdict === 'cleared' ? 'good-t' : 'bad-t'}">${VERDICTS[r.verdict]}</span><span class="dim">${dateLabel(r.t)}</span></div>`).join('')}</div>` : '<div class="empty small">없음</div>'}</div>
+  </div>
+  <h3 class="mb mt">📜 지난 디스전</h3>
+  ${past.length ? `<div class="card"><div class="list">${past.map(w => `<div class="row small"><span class="grow">vs ${esc(artistName(w.npcId))} · ${w.rounds.length}라운드</span><span>${resName[w.status] || w.status}${w.how ? ` (${esc(w.how)})` : ''}</span><span class="dim">${dateLabel(w.endT || w.startT)}</span></div>`).join('')}</div></div>` : '<div class="card empty">아직 없습니다.</div>'}`;
+}
+
 /* =========================================================
  *  이벤트 처리
  * ========================================================= */
@@ -771,6 +869,7 @@ function handle(act, el) {
           <div>• <b>📖 스토리</b>: 소식함으로 오는 인생 이벤트에서 선택하면 <b>영감</b>이 생기고, 같은 주제로 곡을 쓰면 완성도가 오릅니다.</div>
           <div>• 곡을 완성하면 <b>작업 노트</b>가, 발매하면 평론가들이 앨범 제목·타이틀곡·수록곡을 직접 언급하는 리뷰를 씁니다.</div>
           <div>• 인지도 30이 되면 <b>내 레이블</b>을 세워 아티스트를 영입할 수 있어요. 투어와 굿즈로 돈을 벌 수도 있습니다.</div>
+          <div>• <b>⚔️ 디스·사건</b>: 디스곡의 대상(아티스트·레이블·크루·씬 전체·평론가·방송)과 수위를 직접 정하고, 답디스가 오가는 디스전을 벌일 수 있어요. 위험한 선택(무단 샘플링, 사재기, 탈세, 마약…)은 수사와 재판으로 이어질 수 있습니다.</div>
           <div>• 멘탈 관리 필수! 멘탈이 바닥나면 번아웃이 옵니다.</div>
           <div>• 준비됐으면 오른쪽 위 <b>다음 주 ▶</b>로 시간을 진행하세요.</div>
         </div><div class="foot"><button class="btn primary" data-act="close">시작하기</button></div>`);
@@ -789,10 +888,26 @@ function handle(act, el) {
         <button class="btn" data-act="save-now">💾 지금 저장 (자동 저장도 됩니다)</button>
         <button class="btn" data-act="export">📤 세이브 코드 내보내기</button>
         <button class="btn" data-act="career">🎬 커리어 요약 보기</button>
+        <button class="btn" data-act="identity">🪪 활동명 변경 · 장르 전향</button>
         <button class="btn bad" data-act="retire">🎤 은퇴하고 새 게임 시작</button>
       </div><div class="foot"><button class="btn" data-act="close">닫기</button></div>`);
       return;
     case 'save-now': save(); toast('저장했습니다', 'good'); return;
+    case 'identity':
+      openModal(`<h2>🪪 아이덴티티</h2>
+        <label class="f"><span>새 활동명 (1년에 한 번, 인지도 약간 하락)</span><div class="row"><input id="id-name" maxlength="16" value="${esc(S.player.stage)}" style="flex:1"><button class="btn" data-act="do-stage-rename">변경</button></div></label>
+        <label class="f mt"><span>주력 장르 전향 (26주에 한 번, 찐팬 일부 이탈)</span><div class="row"><select id="id-genre" style="flex:1">${GENRES.map(g => `<option ${g === S.player.genre ? 'selected' : ''}>${g}</option>`).join('')}</select><button class="btn" data-act="do-genre">전향</button></div></label>
+        <div class="foot"><button class="btn" data-act="close">닫기</button></div>`);
+      return;
+    case 'do-stage-rename': { const nm = $('#id-name').value; closeModal(); result(renameStage(nm)); render(); return; }
+    case 'do-genre': { const g = $('#id-genre').value; closeModal(); result(changeGenre(g)); render(); return; }
+    case 'night-menu': openModal(nightHtml()); return;
+    case 'drug': closeModal(); result(actDrugParty()); render(); return;
+    case 'gamble': closeModal(); result(actGamble(Number(d.v))); render(); return;
+    case 'reflect': if (confirm(`${d.v}주간 자숙하시겠습니까?`)) { result(startReflection(Number(d.v))); render(); } return;
+    case 'truce': result(proposeTruce(d.id)); render(); return;
+    case 'war-sns': UI.tab = 'sns'; UI.snsPlatform = 'x'; UI.snsType = 'diss'; render(); { const sel = $('#sns-target'); if (sel) sel.value = d.id; } return;
+    case 'case-act': { const r = d.c === 'lawyer1' ? hireLawyer(d.id, 1) : d.c === 'lawyer2' ? hireLawyer(d.id, 2) : setPlea(d.id, d.c); result(r); render(); return; }
     case 'export':
       openModal(`<h2>📤 세이브 코드</h2><div class="small muted mb">아래 코드를 복사해 두었다가 시작 화면의 '세이브 불러오기'에 붙여넣으면 됩니다.</div><textarea style="min-height:200px" readonly onclick="this.select()">${esc(exportSave())}</textarea><div class="foot"><button class="btn primary" data-act="close">닫기</button></div>`);
       return;
@@ -830,9 +945,16 @@ function handle(act, el) {
     case 'recruit': result(recruit(d.id)); render(); return;
 
     // 곡 작업
-    case 'song-form': if (S.ap < 1) { toast('행동력이 부족합니다', 'bad'); return; } openModal(songFormHtml()); return;
+    case 'song-form': case 'diss-song': {
+      if (S.ap < 1) { toast('행동력이 부족합니다', 'bad'); return; }
+      openModal(songFormHtml());
+      if (act === 'diss-song') presetDiss(d.id);
+      return;
+    }
     case 'make-song': {
-      const res = makeSong({ title: $('#sf-title').value, genre: $('#sf-genre').value, theme: $('#sf-theme').value, deep: $('#sf-deep').value === '1', producer: $('#sf-prod').value || null, feats: [$('#sf-f1').value, $('#sf-f2').value].filter((v, i, a) => v && a.indexOf(v) === i) });
+      const theme = $('#sf-theme').value;
+      const diss = theme === '디스' ? { type: $('#sf-dtype').value, id: $('#sf-dtarget') ? $('#sf-dtarget').value : null, level: $('#sf-dlevel').value, punch: $('#sf-dpunch').value } : null;
+      const res = makeSong({ title: $('#sf-title').value, genre: $('#sf-genre').value, style: $('#sf-style').value, sample: $('#sf-sample').value, theme, diss, deep: $('#sf-deep').value === '1', producer: $('#sf-prod').value || null, feats: [$('#sf-f1').value, $('#sf-f2').value].filter((v, i, a) => v && a.indexOf(v) === i) });
       if (!res.ok) { toast(res.msg, 'bad'); return; }
       render();
       openModal(`<h2>🎧 곡 완성!</h2>${songCard(res.song, { openNote: true })}${res.notes.length ? `<div class="col small mt">${res.notes.map(n => `<div>${esc(n)}</div>`).join('')}</div>` : ''}<div class="foot"><button class="btn" data-act="tab" data-tab="studio">작업실로</button><button class="btn primary" data-act="close">확인</button></div>`);
@@ -871,7 +993,7 @@ function handle(act, el) {
       const r = UI.rel;
       const res = act === 'do-comp'
         ? releaseCompilation({ title: r.title, songIds: r.ids, cover: r.cover, promo: r.promo, source: r.source })
-        : releaseWork({ type: r.type, title: r.title, trackIds: r.ids, titleTrackId: r.titleId, cover: r.cover, concept: r.concept, promo: r.promo });
+        : releaseWork({ type: r.type, title: r.title, trackIds: r.ids, titleTrackId: r.titleId, cover: r.cover, concept: r.concept, promo: r.promo, sajaegi: !!r.sajaegi });
       if (!res.ok) { toast(res.msg, 'bad'); return; }
       render();
       openModal(releaseResultHtml(res.release, res.notes), 'wide');
@@ -930,13 +1052,15 @@ function handle(act, el) {
       toast(res.msg, 'good');
       render();
       if (res.release) openModal(releaseResultHtml(res.release, []), 'wide');
+      if (res.openDiss) { openModal(songFormHtml()); presetDiss(res.openDiss); }
       if (res.story) openModal(`<h2>📖 ${esc(res.story.title)}</h2><div class="small muted">선택: ${esc(res.story.choice)}</div><p style="font-size:15px;line-height:1.8">${esc(res.story.res)}</p>${res.story.notes.map(n => `<div class="small">${esc(n)}</div>`).join('')}<div class="foot"><button class="btn primary" data-act="close">계속</button></div>`);
       return;
     }
     case 'ff-military': {
-      const ev = fastForwardMilitary();
+      const wasPrison = !!S.player.prison;
+      const ev = fastForwardHiatus();
       render();
-      openModal(`<h2>🎖️ 전역!</h2><p>78주의 군 복무를 마쳤습니다. 그동안의 주요 소식:</p><div class="ev-list scroll">${ev.map(e => `<div>${esc(e)}</div>`).join('') || '<div>조용한 시간이었다.</div>'}</div><div class="foot"><button class="btn primary" data-act="close">복귀하기</button></div>`);
+      openModal(`<h2>${wasPrison ? '🔓 출소!' : '🎖️ 전역!'}</h2><p>${wasPrison ? '수감 생활을 마쳤습니다.' : '78주의 군 복무를 마쳤습니다.'} 그동안의 주요 소식:</p><div class="ev-list scroll">${ev.map(e => `<div>${esc(e)}</div>`).join('') || '<div>조용한 시간이었다.</div>'}</div><div class="foot"><button class="btn primary" data-act="close">복귀하기</button></div>`);
       return;
     }
     case 'tour-menu': openModal(tourHtml()); return;
@@ -958,6 +1082,10 @@ function handleChange(act, el) {
       return;
     }
     case 'rf-promo': UI.rel.promo = Number(el.value); return;
+    case 'rf-sajaegi': UI.rel.sajaegi = el.checked; return;
+    case 'sf-genre': $('#sf-style').innerHTML = styleOptions(el.value); return;
+    case 'sf-theme': $('#sf-diss').style.display = el.value === '디스' ? '' : 'none'; return;
+    case 'sf-dtype': { const t = $('#sf-dtarget'); t.innerHTML = dissTargetOptions(el.value); t.disabled = !t.options.length; t.parentElement.style.opacity = t.options.length ? 1 : .4; return; }
     case 'rf-rename': renameSong(el.dataset.id, el.value); return;
     case 'af-genre': UI.artistGenre = el.value; render(); return;
     case 'af-sort': UI.artistSort = el.value; render(); return;
