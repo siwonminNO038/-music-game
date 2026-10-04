@@ -130,7 +130,8 @@ function react(context, n, vars = {}, opts = {}) {
     let text = fill(pick(tpl[k]), v);
     if (used.has(text)) text = fill(pick(tpl[k]), v);
     used.add(text);
-    const handle = fill(pick(PERSONAS[k].handles), { s: p.stage.replace(/\s/g, ''), n: v.npc.replace(/\s/g, '') });
+    let handle = fill(pick(PERSONAS[k].handles), { s: p.stage.replace(/\s/g, ''), n: v.npc.replace(/\s/g, '') });
+    if (k === 'core' && S.fandom && R() < 0.5) handle = `${S.fandom.name.replace(/\s/g, '')}_${rint(1, 999)}`;
     const likes = Math.max(0, Math.round(rnd(0, 1) ** 2 * (20 + Math.sqrt(totalFollowers()) * 4)));
     const r = { t: S.t, ctx: context, persona: k, handle, text, likes, src: opts.src || '' };
     out.push(r);
@@ -198,6 +199,7 @@ function newGame({ name, stage, bgId, genre, gender }) {
   S.t = 1;
   computeCharts(true);
   rollTrends(START_YEAR);
+  ensureExpansion();
   addNews(`${stage}, 음악 인생을 시작하다. "언젠가 그래미 무대에 설 거야."`, 'good');
   addStory(fill(PROLOGUE[bg.id] || PROLOGUE.underground, storyVars()), 'prologue');
   addStory(`${CHAPTERS[0].title} — ${fill(CHAPTERS[0].text, storyVars())}`, 'chapter');
@@ -220,7 +222,7 @@ function spawnRookies(y, nk, ng) {
     const region = i < nk ? 'KR' : 'GLOBAL';
     const n = mkNpc({
       name: genArtistName(region),
-      genre: pick(region === 'KR' ? ['힙합', '힙합', '힙합', 'R&B', 'R&B', '인디', '팝', '록', '일렉트로닉'] : ['힙합', 'R&B', '팝', '인디']),
+      genre: pick(region === 'KR' ? ['힙합', '힙합', '힙합', 'R&B', 'R&B', '인디', '팝', '록', '일렉트로닉', '발라드', '트로트', '포크', '재즈', '메탈', '국악 퓨전'] : ['힙합', 'R&B', '팝', '인디', '라틴', '아프로비츠', '컨트리', 'J-팝']),
       fame: region === 'KR' ? rint(5, 25) : rint(40, 70), skill: rint(55, 88),
       trait: pick(['감성적', '유쾌함', '허세', '장인', '신비주의', '독설가']), bio: `${y}년 데뷔한 신인`
     }, region);
@@ -320,10 +322,10 @@ function npcRelease(n, t, opts = {}) {
     const pool = S.npcs.filter(x => x.region === n.region && x.id !== n.id && x.role === 'artist' && x.debutYear <= yearOf(t));
     if (pool.length) feats.push(weightedPick(pool, x => (x.crew && x.crew === n.crew ? 4 : 1) * (x.genre === n.genre ? 2 : 1)).id);
   }
-  let producer = null;
-  if (n.region === 'KR' && R() < 0.5) {
-    const prods = S.npcs.filter(x => x.role === 'producer');
-    producer = weightedPick(prods, x => x.genre === n.genre ? 3 : 1).id;
+  let producer = opts.producer || null;
+  if (!producer && n.region === 'KR' && R() < 0.5) {
+    const prods = S.npcs.filter(x => x.role === 'producer' && x.region === n.region);
+    if (prods.length) producer = weightedPick(prods, x => x.genre === n.genre ? 3 : 1).id;
   }
   const hook = rnd(30, 95);
   const rel = {
@@ -765,6 +767,7 @@ function releaseWork(opts) {
   rel.cohesion = computeCohesion(tracks, rel.concept, opts.type);
   reviewRelease(rel, tracks);
   S.releases.push(rel);
+  if (opts.partner && !['compilation', 'mixtape'].includes(opts.type)) applyPartner(rel, tracks, opts.partner);
 
   // 스트리밍 기반값 설정
   const lab = myActiveLabel();
@@ -968,6 +971,7 @@ function nextWeek() {
   warsWeekly(summary);
   crimesWeekly(summary);
   npcCrimeNews();
+  expansionWeekly(summary);
   checkChapter(summary);
   checkGoals(summary);
   // 소식함 만료
@@ -1261,12 +1265,17 @@ function awardCandidates(a, cat, eligYear) {
   } else if (cat.type === 'producer') {
     const by = {};
     npcRels.forEach(r => { if (r.producer) (by[r.producer] = by[r.producer] || []).push(r); });
+    const myBeats = by.player || []; delete by.player;
     Object.keys(by).forEach(id => {
       const rs = by[id];
       out.push({ label: artistName(id), score: score(avg(rs.map(r => r.critic)) + Math.min(8, rs.length * 2), pop(sum(rs.map(r => r.total))), false), isPlayer: false, artist: id });
     });
     const self = myRels.flatMap(r => r.trackIds.map(song)).filter(s => !s.producer);
-    if (self.length >= 2) out.push({ label: p.stage, score: score(avg(self.map(s => s.attrs.sound)) + Math.min(8, self.length), pop(sum(self.map(s => s.totalDom))), true), isPlayer: true, title: '' });
+    if (playerEligible && self.length + myBeats.length >= 2) {
+      const crit = avg(self.map(s => s.attrs.sound).concat(myBeats.map(r => r.critic)));
+      const st = sum(self.map(s => s.totalDom)) + sum(myBeats.map(r => r.total));
+      out.push({ label: p.stage + (myBeats.length ? ` (외부 프로듀싱 ${myBeats.length}곡)` : ''), score: score(crit + Math.min(10, self.length + myBeats.length * 2), pop(st), true), isPlayer: true, title: '' });
+    }
   }
   return out;
 }
@@ -1632,8 +1641,9 @@ function joinCrew(cid) {
   if (p.crew) return { ok: false, msg: '이미 크루에 소속되어 있습니다.' };
   p.crew = cid; p.cred += c.cred * 0.5;
   crewMembers(cid).forEach(n => n.rel = clamp(n.rel + 12, 0, 100));
-  addNews(`🤜🤛 ${p.stage}, 크루 '${c.name}' 합류`, 'good');
-  react('crew_join', 4, { npc: c.name });
+  addNews(`🤜🤛 ${p.stage}, ${c.region === 'GLOBAL' ? '해외 ' : ''}크루 '${c.name}' 합류`, 'good');
+  if (c.region === 'GLOBAL') { p.gLegacy += 3; react('global_crew', 5, { crew: c.name }, { weights: { global: 4 } }); addMilestone('global_crew', `해외 크루 '${c.name}' 합류`); addStory(`해외 크루 '${c.name}'의 일원이 됐다. 단톡방 알림이 새벽에 울린다. 시차 때문이다.`, 'story'); }
+  else react('crew_join', 4, { npc: c.name });
   save();
   return { ok: true, msg: `'${c.name}'에 합류했습니다!` };
 }
@@ -1671,7 +1681,7 @@ function disbandCrew() {
   return { ok: true, msg: '크루를 해체했습니다.' };
 }
 function recruitChance(n) {
-  if (n.region === 'GLOBAL') return 0;
+  if (n.region === 'GLOBAL') return globalRecruitChance(n);
   let c = (n.rel - 50) / 50 + (S.player.fame - n.fame) / 100;
   if (n.crew) c -= 0.35;
   if (n.label && n.label === S.player.label) c += 0.1;
@@ -1706,7 +1716,7 @@ function releaseCompilation({ title, songIds, cover, promo, source }) {
   if (mem.length < (isLabel ? 1 : 2)) return { ok: false, msg: isLabel ? '소속 아티스트가 1명 이상 필요합니다.' : '크루 멤버가 2명 이상 필요합니다.' };
   if (!songIds.length || songIds.length > 3) return { ok: false, msg: '내 곡을 1~3곡 선택하세요.' };
   const parts = mem.slice(0, 6);
-  const extra = parts.map(n => ({ title: genTitle('KR', n.genre), artist: n.name, quality: Math.round(clamp(n.skill + rnd(-10, 6), 20, 98)) }));
+  const extra = parts.map(n => ({ title: genTitle(n.region, n.genre), artist: n.name, quality: Math.round(clamp(n.skill + rnd(-10, 6), 20, 98)) }));
   const res = releaseWork({ type: 'compilation', title, trackIds: songIds, titleTrackId: songIds[0], cover, promo, concept: `${c.name} ${isLabel ? '레이블' : '크루'} 컴필레이션`, extraTracks: extra });
   if (!res.ok) return res;
   const rel = res.release;
@@ -1717,7 +1727,8 @@ function releaseCompilation({ title, songIds, cover, promo, source }) {
   rel.critic = Math.round(avg(rel.reviews.map(r => r.s100)));
   // 크루원 곡을 차트에 올림
   parts.forEach((n, i) => {
-    const cs = { id: uid('cs'), artistId: n.id, title: extra[i].title, releaseId: null, domBase: (2000 + Math.pow(n.fame, 2.25) * 32 * 0.5 + Math.pow(p.fame, 2.25) * 32 * 0.2) * rnd(0.5, 1.2), globBase: 100, decay: rnd(0.78, 0.88), startT: S.t + 1, dom: 0, glob: 0, total: 0, totalGlob: 0, feats: [] };
+    const isG = n.region === 'GLOBAL';
+    const cs = { id: uid('cs'), artistId: n.id, title: extra[i].title, releaseId: null, domBase: (2000 + Math.pow(isG ? n.fame * 0.5 : n.fame, 2.25) * 32 * 0.5 + Math.pow(p.fame, 2.25) * 32 * 0.2) * rnd(0.5, 1.2), globBase: isG ? Math.pow(n.fame, 2.4) * 600 * 0.25 * rnd(0.5, 1.1) : 100, decay: rnd(0.78, 0.88), startT: S.t + 1, dom: 0, glob: 0, total: 0, totalGlob: 0, feats: [] };
     S.chartSongs.push(cs);
     n.rel = clamp(n.rel + 8, 0, 100);
   });
@@ -1820,6 +1831,7 @@ function resolveInbox(id, choice, extra = {}) {
   const done = (res) => { S.inbox = S.inbox.filter(x => x.id !== id); save(); return res; };
   const d = m.data;
   if (m.type === 'story') return resolveStory(m, choice);
+  if (m.type === 'gfest' && choice === 'accept') return playGlobalFest(m);
   if (m.type === 'case') {
     const r = choice === 'lawyer1' ? hireLawyer(d.caseId, 1) : choice === 'lawyer2' ? hireLawyer(d.caseId, 2) : setPlea(d.caseId, choice);
     const cs = S.cases.find(c => c.id === d.caseId);
@@ -2300,6 +2312,7 @@ function migrate() {
   const pd = { notoriety: 0, prison: null, banUntil: 0, boycottUntil: 0, reflectUntil: 0, record: [] };
   Object.keys(pd).forEach(k => { if (S.player[k] === undefined) S.player[k] = pd[k]; });
   if (!S.trends) rollTrends(yearOf(S.t));
+  ensureExpansion();
   const parodies = new Set(NPC_KR.concat(NPC_GLOBAL).map(n => n.name));
   S.npcs.forEach(n => { if (n.parody === undefined) n.parody = parodies.has(n.name); });
   S.songs.forEach(s => { if (!s.note) s.note = songNote(s, titleFitsTheme(s.title, s.theme)); });

@@ -220,6 +220,7 @@ function viewHome() {
           <button class="act" data-act="global-promo" ${ap < 2 || p.fame < 35 ? 'disabled' : ''}><b>✈️ 해외 프로모션</b><span>인지도 35+, 500만원 (2)</span></button>
           <button class="act" data-act="release-form" ${unreleasedSongs().length ? '' : 'disabled'}><b>💿 발매하기</b><span>미발매 ${unreleasedSongs().length}곡</span></button>
           <button class="act" data-act="tab" data-tab="sns"><b>📱 SNS 게시</b><span>이번 주 ${S.postsLeft}회 남음</span></button>
+          <button class="act" data-act="sell-beat" ${ap < 1 || p.skills.produce < 35 || onHiatus() ? 'disabled' : ''}><b>🎛️ 비트 판매</b><span>${p.skills.produce < 35 ? '프로듀싱 35+ 필요' : '다른 아티스트 곡 프로듀싱 (1)'}</span></button>
           <button class="act" data-act="night-menu" ${onHiatus() ? 'disabled' : ''}><b>🌃 밤의 유혹</b><span>위험한 선택들</span></button>
           <button class="act" data-act="tour-menu" ${onHiatus() ? 'disabled' : ''}><b>🎫 투어·굿즈</b><span>${tourCooldown() ? `투어 ${tourCooldown()}주 후` : '공연 기획 (3)'}</span></button>
         </div>
@@ -329,6 +330,7 @@ function releaseFormHtml(comp) {
       <label class="f"><span>${comp ? '컴필레이션' : '작품'} 제목 *</span><input id="rf-title" maxlength="40" value="${esc(r.title)}" data-act-input="rf-title" placeholder="예: 서울, 새벽 세 시"></label>
       ${comp ? '' : `<label class="f"><span>앨범 소개 / 컨셉 (20자 이상이면 응집력 보너스)</span><textarea id="rf-concept" maxlength="300" data-act-input="rf-concept" placeholder="이 앨범은 ...">${esc(r.concept)}</textarea></label>`}
       ${r.type === 'mixtape' ? '<div class="small muted">🎁 믹스테이프는 사운드클라우드에 무료 공개됩니다. 수익·멜론/빌보드 차트는 없지만 평단 신뢰도와 찐팬이 늘고, 리드머가 리뷰합니다.</div>' : ''}
+      ${r.type !== 'mixtape' && !comp ? `<label class="f"><span>🤝 합작 파트너 (친밀도 60+ · 모든 곡에 참여, 스트리밍↑)</span><select data-act-change="rf-partner"><option value="">없음 (단독 작품)</option>${collabPartners().map(n => `<option value="${n.id}" ${r.partner === n.id ? 'selected' : ''}>${n.region === 'GLOBAL' ? '🌎 ' : ''}${esc(n.name)} (${n.genre}, ⭐${Math.round(n.fame)})</option>`).join('')}</select></label>` : ''}
       ${r.type !== 'mixtape' && !comp ? `<label class="row small" style="cursor:pointer"><input type="checkbox" data-act-change="rf-sajaegi" ${r.sajaegi ? 'checked' : ''}> 🕶️ <span class="bad-t">브로커를 통한 음원 사재기 (3,000만원)</span> <span class="tiny dim">— 스트리밍 대폭↑, 적발 시 형사 처벌·차트 기록 박탈</span></label>` : ''}
       <label class="f" ${r.type === 'mixtape' ? 'style="display:none"' : ''}><span>홍보 예산</span><select id="rf-promo" data-act-change="rf-promo">${PROMO_OPTIONS.map((o, i) => `<option value="${i}" ${r.promo === i ? 'selected' : ''} ${o.cost > S.player.money ? 'disabled' : ''}>${o.label} — 노출 x${o.mult}</option>`).join('')}</select></label>
     </div>
@@ -392,6 +394,7 @@ function viewDisco() {
       ${(r.extraTracks || []).map((x, i) => `<tr><td>${tr.length + i + 1}</td><td>${esc(x.title)} <span class="small muted">— ${esc(x.artist)}</span></td><td>${gradeEl(x.quality)}</td><td class="dim" colspan="3">크루 멤버 트랙</td></tr>`).join('')}
       </table></div></div>`;
   }).join('') : '<div class="card empty">아직 발매한 작품이 없습니다. 작업실에서 곡을 만들고 발매해 보세요.</div>'}
+  ${(S.beatCredits || []).length ? `<h3 class="mt mb">🎛️ 프로듀싱 크레딧</h3><div class="card mb"><div class="list">${S.beatCredits.slice().reverse().map(b => { const r = S.npcReleases.find(x => x.id === b.relId); return `<div class="row"><span class="grow">「${esc(b.title)}」 — ${esc(artistName(b.npcId))} (prod. ${esc(S.player.stage)})</span><span class="small muted">${dateLabel(b.t)} · ${fmtMoney(b.price)}${r ? ` · 평단 ${r.critic} · 누적 ${fmtNum(r.total + r.totalGlob)}` : ''}</span></div>`; }).join('')}</div></div>` : ''}
   ${feats.length ? `<h3 class="mt mb">🎙️ 피처링 참여곡</h3><div class="card"><div class="list">${feats.map(r => `<div class="row"><span class="grow">「${esc(r.trackTitle)}」 — ${esc(artistName(r.artistId))} (Feat. ${esc(S.player.stage)})</span><span class="small muted">${dateLabel(r.t)} · 누적 ${fmtNum(r.total + r.totalGlob)}</span></div>`).join('')}</div></div>` : ''}`;
 }
 
@@ -481,7 +484,8 @@ function viewArtists() {
       <div class="row mt"><button class="btn sm" data-act="bond" data-id="${n.id}" ${S.ap < 1 ? 'disabled' : ''}>🍻 친분 쌓기 (1)</button>
       ${n.region === 'KR' && n.role === 'artist' ? `<button class="btn sm bad" data-act="diss-song" data-id="${n.id}" ${S.ap < 1 ? 'disabled' : ''}>⚔️ 디스곡</button>` : ''}
       ${S.myLabel && n.region === 'KR' && n.label !== 'mylabel' ? `<button class="btn sm" data-act="sign" data-id="${n.id}" ${S.ap < 1 ? 'disabled' : ''} title="계약금 ${fmtMoney(signCost(n))}">🏷️ 영입 (${Math.round(signChance(n) * 100)}%)</button>` : ''}
-      ${myCrew && myCrew.own && n.crew !== myCrew.id && n.region === 'KR' ? `<button class="btn sm" data-act="recruit" data-id="${n.id}" ${n.rel < 55 || S.ap < 1 ? 'disabled' : ''}>🚩 크루 영입 (${Math.round(recruitChance(n) * 100)}%)</button>` : ''}</div>
+      ${myCrew && myCrew.own && n.crew !== myCrew.id && n.role === 'artist' ? `<button class="btn sm" data-act="recruit" data-id="${n.id}" ${n.rel < 55 || S.ap < 1 || recruitChance(n) <= 0 ? 'disabled' : ''} title="${n.region === 'GLOBAL' ? '해외 아티스트는 해외 인지도 15+, 친밀도 55+ 필요' : '친밀도 55+ 필요'}">${n.region === 'GLOBAL' ? '🌎' : '🚩'} 크루 초대 (${Math.round(recruitChance(n) * 100)}%)</button>` : ''}
+      ${n.role === 'artist' && p.skills.produce >= 35 && (n.region === 'KR' || p.globalFame >= 20) ? `<button class="btn sm" data-act="sell-beat" data-id="${n.id}" ${S.ap < 1 || inWar(n.id) ? 'disabled' : ''}>🎛️ 비트 제안</button>` : ''}</div>
     </div>`;
   }).join('') || '<div class="card empty">해당하는 아티스트가 없습니다.</div>'}</div>`;
 }
@@ -511,7 +515,7 @@ function viewLabel() {
         <div class="small muted">${esc(crew.vibe)}</div>
         <div class="list mt">${crewMembers(crew.id).map(n => `<div class="row"><span class="grow">${esc(n.name)} <span class="tiny muted">${n.genre} · ⭐${Math.round(n.fame)}</span></span><span class="small">친밀도 ${Math.round(n.rel)}</span></div>`).join('') || '<div class="empty small">아직 멤버가 없습니다. 아티스트 탭에서 친밀도 55 이상인 아티스트를 영입하세요.</div>'}</div>
         <div class="row mt"><button class="btn sm" data-act="comp-form" ${unreleasedSongs().length ? '' : 'disabled'}>📀 크루 컴필레이션</button>${crew.own ? '<button class="btn sm bad" data-act="disband-crew">💥 크루 해체</button>' : '<button class="btn sm bad" data-act="leave-crew">🚪 크루 탈퇴</button>'}</div>
-        <div class="tiny dim mt">크루 효과: 멤버와 친밀도 자동 상승, 피처링 수락률 +25%, 컴필레이션 앨범 발매 가능</div>` :
+        <div class="tiny dim mt">크루 효과: 멤버와 친밀도 자동 상승, 피처링 수락률 +25%, 컴필레이션 앨범 발매 가능${globalCrewMates().length ? ` · 🌎 해외 멤버 ${globalCrewMates().length}명: 매주 해외 인지도 상승, 컴필레이션이 해외 차트를 노림` : ''}</div>` :
       `<div class="small muted mb">크루에 소속되어 있지 않습니다. 기존 크루의 초대를 받거나 직접 만들 수 있습니다.</div>
         <div class="row"><input id="crew-name" maxlength="16" placeholder="크루 이름" style="flex:1;min-width:140px"><button class="btn primary" data-act="found-crew">🚩 크루 창설 (300만원, 인지도 15+)</button></div>`}
     </div>
@@ -527,7 +531,7 @@ function viewLabel() {
       ${ok && !p.label && !S.myLabel ? `<button class="btn sm mt" data-act="contact-label" data-id="${l.id}" ${S.ap < 1 ? 'disabled' : ''}>📞 데모 보내기 (1)</button>` : ''}
     </div>`;
   }).join('')}</div>
-  ${!crew ? `<h3 class="mt mb">🤜 씬의 크루들</h3><div class="grid gauto">${S.crews.filter(c => !c.own).map(c => `<div class="card"><h3>${esc(c.name)}</h3><div class="small muted">${esc(c.vibe)}</div><div class="tiny mt">멤버: ${crewMembers(c.id).map(n => `${esc(n.name)}(${Math.round(n.rel)})`).join(', ')}</div><div class="tiny dim">괄호 안은 나와의 친밀도. 멤버들과 친해지면 초대가 옵니다.</div></div>`).join('')}</div>` : ''}`;
+  ${!crew ? `<h3 class="mt mb">🤜 씬의 크루들 <span class="small muted">🌎 해외 크루는 해외 인지도 20+부터 초대가 옵니다</span></h3><div class="grid gauto">${S.crews.filter(c => !c.own).map(c => `<div class="card" ${c.region === 'GLOBAL' ? 'style="border-color:#0369a1"' : ''}><h3>${c.region === 'GLOBAL' ? '🌎 ' : ''}${esc(c.name)}</h3><div class="small muted">${esc(c.vibe)}</div><div class="tiny mt">멤버: ${crewMembers(c.id).map(n => `${esc(n.name)}(${Math.round(n.rel)})`).join(', ')}</div><div class="tiny dim">괄호 안은 나와의 친밀도. 멤버들과 친해지면 초대가 옵니다.</div></div>`).join('')}</div>` : ''}`;
 }
 
 /* ---------- SNS ---------- */
@@ -577,7 +581,17 @@ function viewFans() {
   let list = S.reactions;
   if (UI.fanFilter !== 'all') list = list.filter(r => r.persona === UI.fanFilter);
   const counts = {}; S.reactions.slice(0, 200).forEach(r => counts[r.persona] = (counts[r.persona] || 0) + 1);
+  const rel = releasedSongs().filter(x => !x.free);
   return `<div class="page-title">💬 팬 반응</div>
+  <div class="card mb" ${S.fandom ? `style="border-color:${esc(S.fandom.color)}"` : ''}>
+    ${S.fandom ? `<h3>💜 공식 팬덤 '${esc(S.fandom.name)}' <span class="sub">${dateLabel(S.fandom.foundedT)} 창단 · 찐팬 약 ${fmtNum(coreFans())}명 · 총공 ${S.fandom.parties}회</span></h3>
+      <div class="row"><select id="party-song" style="flex:1;min-width:160px">${rel.slice().reverse().map(x => `<option value="${x.id}">${esc(x.title)}</option>`).join('') || '<option value="">발매곡 없음</option>'}</select>
+      <button class="btn primary" data-act="stream-party" ${streamPartyCooldown() || !rel.length ? 'disabled' : ''}>📢 스밍 총공 ${streamPartyCooldown() ? `(${streamPartyCooldown()}주 후)` : ''}</button></div>
+      <div class="tiny dim mt">찐팬이 많을수록 효과가 큽니다. 6주에 한 번. 안티가 조금 늘 수 있어요.</div>` :
+    `<h3>💜 팬덤 만들기 <span class="sub">찐팬 ${fmtNum(coreFans())} / 1,000명</span></h3>
+      <div class="row"><input id="fd-name" maxlength="12" placeholder="팬덤 이름 (예: 새벽단)" style="flex:1;min-width:140px"><input type="color" id="fd-color" value="#a855f7"><button class="btn primary" data-act="make-fandom" ${coreFans() < 1000 ? 'disabled' : ''}>창단</button></div>
+      <div class="tiny dim mt">팬덤이 생기면 찐팬 댓글에 팬덤명이 등장하고, '스밍 총공'으로 원하는 곡을 밀어 올릴 수 있어요.</div>`}
+  </div>
   <div class="grid g2 mb">
     <div class="card"><h3>💜 팬덤 분위기 <span class="sub">${sentimentLabel(p.sentiment)}</span></h3>
       <div class="gauge"><i style="left:${clamp(p.sentiment, 1, 99)}%"></i></div>
@@ -607,6 +621,7 @@ function inboxEl(m) {
     case 'crew': btns = b('accept', '합류', 'good') + b('decline', '거절'); break;
     case 'comp': btns = `<select id="comp-song-${m.id}" style="width:auto">${unreleasedSongs().map(s => `<option value="${s.id}">${esc(s.title)} (${grade(s.quality)})</option>`).join('')}</select>` + b('accept', '이 곡으로 참여', 'good') + b('decline', '거절'); break;
     case 'tv': btns = b('accept', '출연한다', 'good') + b('decline', '거절'); break;
+    case 'gfest': btns = b('accept', '🎡 출연 (행동력 2)', 'good') + b('decline', '거절'); break;
     case 'brand': btns = b('accept', '광고 촬영', 'good') + b('decline', '거절'); break;
     case 'diss': btns = b('song', '🔥 답디스 작업하기', 'good') + b('sns', '✖️ SNS 장외전') + b('decline', '무시 (패배 처리)'); break;
     case 'case': { const cs = S.cases.find(c => c.id === m.data.caseId); btns = cs && !cs.plea ? b('admit', '🙇 혐의 인정·사과') + b('deny', '🗣️ 혐의 부인') : ''; btns += cs && cs.lawyer < 1 ? b('lawyer1', '⚖️ 변호사 선임 (5천만원)') : ''; btns += cs && cs.lawyer < 2 ? b('lawyer2', '🏛️ 대형 로펌 (2억원)') : ''; break; }
@@ -902,6 +917,9 @@ function handle(act, el) {
     case 'do-stage-rename': { const nm = $('#id-name').value; closeModal(); result(renameStage(nm)); render(); return; }
     case 'do-genre': { const g = $('#id-genre').value; closeModal(); result(changeGenre(g)); render(); return; }
     case 'night-menu': openModal(nightHtml()); return;
+    case 'sell-beat': result(sellBeat(d.id || null)); render(); return;
+    case 'make-fandom': result(createFandom($('#fd-name').value, $('#fd-color').value)); render(); return;
+    case 'stream-party': result(streamParty($('#party-song').value)); render(); return;
     case 'drug': closeModal(); result(actDrugParty()); render(); return;
     case 'gamble': closeModal(); result(actGamble(Number(d.v))); render(); return;
     case 'reflect': if (confirm(`${d.v}주간 자숙하시겠습니까?`)) { result(startReflection(Number(d.v))); render(); } return;
@@ -993,7 +1011,7 @@ function handle(act, el) {
       const r = UI.rel;
       const res = act === 'do-comp'
         ? releaseCompilation({ title: r.title, songIds: r.ids, cover: r.cover, promo: r.promo, source: r.source })
-        : releaseWork({ type: r.type, title: r.title, trackIds: r.ids, titleTrackId: r.titleId, cover: r.cover, concept: r.concept, promo: r.promo, sajaegi: !!r.sajaegi });
+        : releaseWork({ type: r.type, title: r.title, trackIds: r.ids, titleTrackId: r.titleId, cover: r.cover, concept: r.concept, promo: r.promo, sajaegi: !!r.sajaegi, partner: r.partner || null });
       if (!res.ok) { toast(res.msg, 'bad'); return; }
       render();
       openModal(releaseResultHtml(res.release, res.notes), 'wide');
@@ -1083,6 +1101,7 @@ function handleChange(act, el) {
     }
     case 'rf-promo': UI.rel.promo = Number(el.value); return;
     case 'rf-sajaegi': UI.rel.sajaegi = el.checked; return;
+    case 'rf-partner': UI.rel.partner = el.value || null; return;
     case 'sf-genre': $('#sf-style').innerHTML = styleOptions(el.value); return;
     case 'sf-theme': $('#sf-diss').style.display = el.value === '디스' ? '' : 'none'; return;
     case 'sf-dtype': { const t = $('#sf-dtarget'); t.innerHTML = dissTargetOptions(el.value); t.disabled = !t.options.length; t.parentElement.style.opacity = t.options.length ? 1 : .4; return; }
