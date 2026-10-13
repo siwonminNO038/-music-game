@@ -61,6 +61,11 @@ function openModal(html, cls = '', keep = false) {
   if (cur) { const st = cur.scrollTop; cur.className = 'modal ' + cls; cur.style.animation = 'none'; cur.innerHTML = html; cur.scrollTop = st; return; }
   $('#modal-root').innerHTML = `<div class="modal-bg" data-bg="1"><div class="modal ${cls}">${html}</div></div>`;
 }
+// 브라우저 confirm() 대신 쓰는 화면 안 확인 창 (휴대폰·임베드 환경에서도 동작)
+function askConfirm(msg, onYes) {
+  UI.confirmCb = onYes;
+  openModal(`<h2>확인</h2><p style="font-size:15px">${esc(msg)}</p><div class="foot"><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="confirm-yes">확인</button></div>`);
+}
 function closeModal() { $('#modal-root').innerHTML = ''; }
 function result(res) {
   if (!res) return;
@@ -1043,6 +1048,7 @@ function handle(act, el) {
     }
     case 'do-import': try { importSave($('#imp').value.trim()); closeModal(); UI.tab = 'home'; render(); toast('불러왔습니다', 'good'); } catch (err) { toast('올바르지 않은 세이브 코드입니다', 'bad'); } return;
     case 'close': closeModal(); render(); return;
+    case 'confirm-yes': { const cb = UI.confirmCb; UI.confirmCb = null; closeModal(); if (cb) cb(); else render(); return; }
     case 'tab': UI.tab = d.tab; closeModal(); render(); window.scrollTo(0, 0); return;
     case 'menu':
       openModal(`<h2>☰ 메뉴</h2><div class="col">
@@ -1069,7 +1075,7 @@ function handle(act, el) {
     case 'stream-party': result(streamParty($('#party-song').value)); render(); return;
     case 'drug': closeModal(); result(actDrugParty()); render(); return;
     case 'gamble': closeModal(); result(actGamble(Number(d.v))); render(); return;
-    case 'reflect': if (confirm(`${d.v}주간 자숙하시겠습니까?`)) { result(startReflection(Number(d.v))); render(); } return;
+    case 'reflect': askConfirm(`${d.v}주간 자숙하시겠습니까?`, () => { result(startReflection(Number(d.v))); render(); }); return;
     case 'truce': result(proposeTruce(d.id)); render(); return;
     case 'war-sns': UI.tab = 'sns'; UI.snsPlatform = 'x'; UI.snsType = 'diss'; render(); { const sel = $('#sns-target'); if (sel) sel.value = d.id; } return;
     case 'case-act': { const r = d.c === 'lawyer1' ? hireLawyer(d.id, 1) : d.c === 'lawyer2' ? hireLawyer(d.id, 2) : setPlea(d.id, d.c); result(r); render(); return; }
@@ -1097,7 +1103,7 @@ function handle(act, el) {
       return;
     }
     case 'show-weekly': if (UI.lastSummary) openModal(weeklyHtml(UI.lastSummary)); return;
-    case 'cancel-release': if (confirm('발매를 취소할까요? 제작비는 돌아오지 않습니다.')) { result(cancelPendingRelease()); render(); } return;
+    case 'cancel-release': askConfirm('발매를 취소할까요? 제작비는 돌아오지 않습니다.', () => { result(cancelPendingRelease()); render(); }); return;
     case 'music-show': result(actMusicShow()); render(); return;
     case 'deluxe-form': {
       const r = release(d.id);
@@ -1108,8 +1114,8 @@ function handle(act, el) {
       return;
     }
     case 'do-deluxe': { const ids = [...document.querySelectorAll('.dlx:checked')].map(x => x.value); const res = makeDeluxe(d.id, ids); if (!res.ok) { toast(res.msg, 'bad'); return; } closeModal(); toast(res.msg, 'good'); render(); return; }
-    case 'move-home': if (confirm('이사할까요?')) { result(moveHome(d.id)); render(); } return;
-    case 'buy-flex': if (confirm('구매할까요?')) { result(buyFlex(d.id)); render(); } return;
+    case 'move-home': askConfirm('이사할까요?', () => { result(moveHome(d.id)); render(); }); return;
+    case 'buy-flex': askConfirm('구매할까요?', () => { result(buyFlex(d.id)); render(); }); return;
     case 'invest': { const v = Number($('#inv-' + d.k).value) * 10000; result(invest(d.k, v)); render(); return; }
     case 'withdraw': result(withdraw(d.k)); render(); return;
     case 'set-diff': { const k = $('#diff-sel').value; closeModal(); result(setDifficulty(k)); render(); return; }
@@ -1150,7 +1156,7 @@ function handle(act, el) {
       return;
     }
     case 'do-rename': renameSong(d.id, $('#rn').value); closeModal(); render(); return;
-    case 'delete-song': if (confirm('이 곡을 폐기할까요?')) { deleteSong(d.id); render(); } return;
+    case 'delete-song': askConfirm('이 곡을 폐기할까요?', () => { deleteSong(d.id); render(); }); return;
 
     // 발매
     case 'release-form': case 'comp-form': case 'lcomp-form': {
@@ -1210,7 +1216,7 @@ function handle(act, el) {
     case 'fan-filter': UI.fanFilter = d.v; render(); return;
 
     // 레이블 / 크루
-    case 'leave-label': if (confirm(`위약금 ${fmtMoney(buyoutCost())}을 내고 계약을 해지할까요?`)) { result(leaveLabel()); render(); } return;
+    case 'leave-label': askConfirm(`위약금 ${fmtMoney(buyoutCost())}을 내고 계약을 해지할까요?`, () => { result(leaveLabel()); render(); }); return;
     case 'contact-label': {
       if (!useAP(1)) { toast('행동력이 부족합니다', 'bad'); return; }
       const lab = labelOf(d.id);
@@ -1223,8 +1229,8 @@ function handle(act, el) {
       save(); render(); return;
     }
     case 'found-crew': result(foundCrew($('#crew-name').value)); render(); return;
-    case 'leave-crew': if (confirm('크루를 탈퇴할까요?')) { result(leaveCrew()); render(); } return;
-    case 'disband-crew': if (confirm('크루를 해체할까요?')) { result(disbandCrew()); render(); } return;
+    case 'leave-crew': askConfirm('크루를 탈퇴할까요?', () => { result(leaveCrew()); render(); }); return;
+    case 'disband-crew': askConfirm('크루를 해체할까요?', () => { result(disbandCrew()); render(); }); return;
 
     // SNS
     case 'sns-pf': UI.snsPlatform = d.v; UI.snsType = POST_TYPES[d.v][0].id; render(); return;
@@ -1268,8 +1274,8 @@ function handle(act, el) {
     case 'found-label': result(foundLabel({ name: $('#lb-name').value, emoji: $('#lb-emoji').value, color: $('#lb-color').value })); render(); return;
     case 'upgrade-label': result(upgradeLabel(d.k)); render(); return;
     case 'sign': result(signArtist(d.id)); render(); return;
-    case 'drop-artist': if (confirm('계약을 종료할까요?')) { result(dropArtist(d.id)); render(); } return;
-    case 'close-label': if (confirm('레이블을 폐업할까요? 소속 아티스트와의 계약이 모두 끝납니다.')) { result(closeLabel()); render(); } return;
+    case 'drop-artist': askConfirm('계약을 종료할까요?', () => { result(dropArtist(d.id)); render(); }); return;
+    case 'close-label': askConfirm('레이블을 폐업할까요? 소속 아티스트와의 계약이 모두 끝납니다.', () => { result(closeLabel()); render(); }); return;
   }
 }
 
