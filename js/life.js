@@ -44,63 +44,7 @@ function albumUnlocked() {
   return S.releases.some(r => r.type === 'EP' || r.type === 'album') || S.player.fame >= 25;
 }
 
-// UI에서 부르는 발매: 준비 기간이 있으면 예약, 없으면 즉시 발매
-function scheduleRelease(opts) {
-  const p = S.player;
-  if (S.pendingRelease) return { ok: false, msg: `이미 『${S.pendingRelease.opts.title}』 발매를 준비 중입니다.` };
-  if (onHiatus()) return { ok: false, msg: '지금은 발매할 수 없습니다.' };
-  if (opts.type === 'album' && !albumUnlocked()) return { ok: false, msg: '정규 앨범은 EP를 한 장 이상 내거나 국내 인지도 25 이상이 되어야 낼 수 있습니다.' };
-  const [mn, mx] = releaseRules(opts.type);
-  const tracks = opts.trackIds.map(song).filter(Boolean);
-  if (!opts.title || !opts.title.trim()) return { ok: false, msg: '작품 제목을 입력하세요.' };
-  if (tracks.length < mn || tracks.length > mx) return { ok: false, msg: `${typeName(opts.type)}${josa(typeName(opts.type), '은')} ${mn}~${mx}곡이어야 합니다.` };
-  const cost = productionCost(opts.type, tracks.length);
-  if (opts.type === 'mixtape') opts.promo = 0;
-  const promo = PROMO_OPTIONS[opts.promo || 0];
-  const total = cost.pay + promo.cost + (opts.sajaegi ? 30000000 : 0);
-  if (p.money < total) return { ok: false, msg: `제작비·홍보비 ${fmtMoney(total)}이 필요합니다. (보유 ${fmtMoney(p.money)})` };
-  p.money -= total;
-  opts.prepaid = true;
-  const weeks = prepWeeks(opts.type);
-  if (!weeks) {
-    const res = releaseWork(opts);
-    if (!res.ok) { p.money += total; return res; }
-    if (cost.full) res.notes.unshift(cost.pay ? `💸 제작비(믹싱·마스터링·유통) ${fmtMoney(cost.pay)}` : `🏢 제작비 ${fmtMoney(cost.full)}${josa(fmtMoney(cost.full), '은')} ${cost.who}에서 부담했습니다.`);
-    save();
-    return res;
-  }
-  tracks.forEach(s => { s.reserved = true; });
-  S.pendingRelease = { opts, releaseT: S.t + weeks, startT: S.t, cost: total };
-  p.hype = clamp(p.hype + 6, 0, 60);
-  addNews(`📅 ${p.stage}, ${typeName(opts.type)} 『${opts.title.trim()}』 ${weeks}주 뒤 발매 예고`, 'release');
-  react('post_teaser', 4, { title: opts.title.trim() });
-  save();
-  return { ok: true, scheduled: true, msg: `『${opts.title.trim()}』 발매를 예약했습니다. ${weeks}주 동안 마스터링·유통·홍보를 준비합니다. (제작비 ${fmtMoney(cost.pay)}${cost.pay < cost.full ? `, 나머지는 ${cost.who} 부담` : ''})` };
-}
-function cancelPendingRelease() {
-  const pr = S.pendingRelease;
-  if (!pr) return { ok: false, msg: '예약된 발매가 없습니다.' };
-  pr.opts.trackIds.map(song).filter(Boolean).forEach(s => { s.reserved = false; });
-  S.pendingRelease = null;
-  S.player.sentiment = clamp(S.player.sentiment - 4, 0, 100);
-  addNews(`😢 ${S.player.stage}, 『${pr.opts.title}』 발매 연기… 팬들 실망`, 'bad');
-  save();
-  return { ok: true, msg: '발매를 취소했습니다. 이미 쓴 제작비는 돌아오지 않고, 팬들이 실망했습니다.' };
-}
-// 매주: 준비 중이면 하입을 쌓고, 발매일이 되면 발매
-function pendingReleaseWeekly(summary) {
-  const pr = S.pendingRelease;
-  if (!pr) return;
-  const p = S.player;
-  if (S.t < pr.releaseT) { p.hype = clamp(p.hype + 3, 0, 60); return; }
-  if (onHiatus()) { pr.releaseT = S.t + 1; return; }
-  pr.opts.trackIds.map(song).filter(Boolean).forEach(s => { s.reserved = false; });
-  S.pendingRelease = null;
-  const res = releaseWork(pr.opts);
-  if (!res.ok) { summary.events.push(`⚠️ 예약된 발매가 실패했습니다: ${res.msg}`); return; }
-  summary.release = { id: res.release.id, notes: res.notes };
-  summary.events.push(`💿 『${res.release.title}』 발매! 평단 지수 ${res.release.critic}`);
-}
+// 발매 예약·준비 기간 처리는 release.js 참고
 
 /* ---------- 음악방송 ---------- */
 const MUSIC_SHOWS = ['엠카운트업', '뮤직뱅커', '쇼! 음악변두리', '인기가사'];

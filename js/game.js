@@ -290,6 +290,14 @@ function npcWeeklyReleases(t, pre) {
     if (n.role !== 'artist') return;
     if (n.debutYear > yearOf(t)) return;
     if (n.forceRelT === t) { npcRelease(n, t); n.forceRelT = null; return; }
+    if (n.scheduledT) {
+      if (n.scheduledT <= t) {
+        n.scheduledT = null;
+        const rel = npcRelease(n, t, { type: R() < 0.5 ? 'EP' : 'album' });
+        if (!pre) addNews(`🔥 ${n.name}, 예고했던 ${typeName(rel.type)} 「${rel.title}」로 컴백`, 'npc');
+      }
+      return;
+    }
     if (t - n.lastRelT < 10) return;
     const p = n.region === 'GLOBAL' ? 0.032 : n.label === 'mylabel' ? 0.045 : n.rival ? 0.04 : 0.026;
     if (R() < p) {
@@ -753,7 +761,7 @@ function releaseWork(opts) {
   const tracks = opts.trackIds.map(song).filter(Boolean);
   if (!opts.title || !opts.title.trim()) return { ok: false, msg: '작품 제목을 입력하세요.' };
   if (tracks.length < mn || tracks.length > mx) return { ok: false, msg: `${typeName(opts.type)}${josa(typeName(opts.type), '은')} ${mn}~${mx}곡이어야 합니다.` };
-  if (tracks.some(s => s.releaseId)) return { ok: false, msg: '이미 발매된 곡이 포함되어 있습니다.' };
+  if (tracks.some(s => s.releaseId && !s.preRelease)) return { ok: false, msg: '이미 발매된 곡이 포함되어 있습니다.' };
   if (opts.type === 'mixtape') opts.promo = 0;
   if (onHiatus()) return { ok: false, msg: '지금은 발매할 수 없습니다.' };
   const promo = PROMO_OPTIONS[opts.promo || 0];
@@ -774,6 +782,7 @@ function releaseWork(opts) {
   };
   rel.cohesion = computeCohesion(tracks, rel.concept, opts.type);
   reviewRelease(rel, tracks);
+  releaseExtrasPre(rel, tracks, opts);
   S.releases.push(rel);
   if (opts.partner && !['compilation', 'mixtape'].includes(opts.type)) applyPartner(rel, tracks, opts.partner);
 
@@ -792,6 +801,8 @@ function releaseWork(opts) {
   tracks.forEach((s, i) => {
     const isTitle = s.id === rel.titleTrackId;
     s.role = isTitle ? 'title' : 'bside';
+    // 선공개곡은 이미 스트리밍 중: 앨범 발매로 다시 주목받는다
+    if (s.preRelease) { s.preRelease = false; s.releaseId = rel.id; s.boost += 0.5; return; }
     const roleMult = isTitle ? (opts.type === 'album' ? 1.15 : 1) : opts.type === 'single' ? 0.45 : opts.type === 'EP' ? 0.3 : opts.type === 'compilation' ? 0.4 : 0.22;
     const trackMult = 0.3 + s.attrs.hook / 100 * 1.1 + s.quality / 100 * 0.4;
     let featDom = 0, featGlob = 0;
@@ -818,6 +829,7 @@ function releaseWork(opts) {
     s.releaseId = rel.id;
     if (opts.type === 'mixtape') s.free = true; // 무료 공개: 수익/차트 없음
   });
+  releaseExtrasPost(rel, tracks, opts, notes);
   p.hype = 0;
   if (!p.debutT) {
     p.debutT = S.t; addMilestone('debut', `데뷔작 「${rel.title}」 발매`);
@@ -897,6 +909,7 @@ function nextWeek() {
 
   // NPC 활동
   npcWeeklyReleases(t, false);
+  scheduleNpcComebacks(t);
   spawnBackgroundSongs(t);
   tickChartSongs(t);
 
@@ -975,7 +988,9 @@ function nextWeek() {
   if (p.crew) crewMembers(p.crew).forEach(n => n.rel = clamp(n.rel + 0.5, 0, 100));
 
   // 차트
+  physicalWeekly(summary);
   const chartEv = computeCharts(false);
+  firstWeekReports(summary);
   summary.chart = chartEv;
 
   // 시상식
@@ -1132,7 +1147,8 @@ function computeCharts(silent) {
     const tr = r.trackIds.map(song);
     if (tr[0].startT > S.t) return;
     const age = S.t - tr[0].startT;
-    const sales = age === 0 ? (Math.pow(p.globalFame, 2) * 25 + p.coreRatio * Math.sqrt(totalFollowers()) * 0.6) : 0;
+    // 미국 앨범 차트: 해외 인지도 기반 판매 + 해외 인지도만큼 피지컬 판매 일부 반영
+    const sales = (age === 0 ? Math.pow(p.globalFame, 2) * 25 : 0) + (r.physWeek || 0) * Math.min(0.5, p.globalFame / 100);
     const units = sum(tr.map(s => s.glob + s.dom * 0.4)) / 1250 + sales;
     albums.push({ key: r.id, title: r.title, artist: r.type === 'compilation' && r.compName ? r.compName : p.stage, value: units, isPlayer: true, ref: r });
   });
@@ -1143,7 +1159,7 @@ function computeCharts(silent) {
     return Object.assign({}, e, { prev: prevB[e.key] || null, peak: m.peak, weeks: m.weeks });
   });
 
-  S.charts = { melon: melon.map(stripRef), hot100: hot.map(stripRef), bb200: bb.map(stripRef), t: S.t };
+  S.charts = { melon: melon.map(stripRef), hot100: hot.map(stripRef), bb200: bb.map(stripRef), circle: buildCircleChart(meta), t: S.t };
   if (silent) return events;
 
   // 플레이어 관련 차트 이벤트

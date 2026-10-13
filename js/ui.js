@@ -22,8 +22,13 @@ const TABS = [
 function gradeEl(q) { const g = grade(q); return `<span class="grade ${g}" title="완성도 ${q}">${g}</span>`; }
 function bar(v, cls = '', max = 100) { return `<div class="bar ${cls}"><i style="width:${clamp(v / max * 100, 0, 100)}%"></i></div>`; }
 function statRow(label, v, cls = '', shown) { return `<div class="stat"><span>${label}</span>${bar(v, cls)}<span class="v">${shown != null ? shown : Math.round(v)}</span></div>`; }
-function coverEl(c, title, size = '') {
-  return `<div class="cover ${size}" style="background:linear-gradient(135deg,${esc(c.c1)},${esc(c.c2)})"><div class="e">${esc(c.emoji || '🎵')}</div><div class="ct">${esc(title)}</div></div>`;
+function coverEl(c, title, size = '', artist) {
+  c = c || {};
+  const lay = c.layout || 'bottom';
+  const e = `<div class="e">${esc(c.emoji || '🎵')}</div>`;
+  const ct = lay === 'none' ? '' : `<div class="ct" style="font-family:${esc(COVER_FONT_CSS[c.font || 'sans'])}">${esc(title)}${c.artist && artist ? `<div class="ca">${esc(artist)}</div>` : ''}</div>`;
+  const inner = lay === 'top' ? ct + e : e + ct;
+  return `<div class="cover ${size}" style="background:${esc(coverBackground(c))};${lay === 'center' ? 'justify-content:center;align-items:center;text-align:center;gap:6px' : ''}">${inner}</div>`;
 }
 function personaChip(k) { const p = PERSONAS[k]; return `<span class="pill" title="${p.label}">${p.icon} ${p.label}</span>`; }
 function reactionEl(r) {
@@ -357,13 +362,93 @@ function releaseFormHtml(comp) {
   </div>
   <div class="foot"><button class="btn" data-act="close">취소</button><button class="btn primary" data-act="${comp ? 'do-comp' : 'do-release'}">${!comp && prepWeeks(r.type) ? `📅 발매 예약 (${prepWeeks(r.type)}주 후)` : '발매하기 🚀'}</button></div>`;
 }
-function rerenderRelease() { openModal(releaseFormHtml(UI.rel.comp), 'wide', true); }
+function rerenderRelease() { openModal(UI.rel.comp ? releaseFormHtml(true) : releaseWizardHtml(), 'wide', true); }
+
+/* ---------- 발매 캠페인 마법사 ---------- */
+function relOpts() {
+  const r = UI.rel;
+  return { type: r.type, title: r.title, trackIds: r.ids, titleTrackId: r.titleId, cover: r.cover, concept: r.concept, promo: r.promo, sajaegi: !!r.sajaegi, partner: r.partner || null,
+    weekOffset: r.weekOffset != null ? r.weekOffset : prepWeeks(r.type), preId: r.preId || null, mv: r.mv != null ? r.mv : -1, physical: r.physical || 'none', showcase: !!r.showcase };
+}
+function releaseWizardHtml() {
+  const r = UI.rel, step = r.step || 1, p = S.player;
+  const un = unreleasedSongs();
+  const [mn, mx] = releaseRules(r.type);
+  const sel = r.ids.map(song).filter(Boolean);
+  const names = ['구성', '아트워크', '발매 전략', '확인'];
+  let body = '';
+  if (step === 1) {
+    body = `<div class="tabs">${['single', 'EP', 'album', 'mixtape'].map(t => `<button class="tab ${r.type === t ? 'on' : ''}" data-act="rf-type" data-type="${t}">${t === 'album' && !albumUnlocked() ? '🔒 ' : ''}${typeName(t)} (${releaseRules(t).join('~')}곡${prepWeeks(t) ? `, 준비 ${prepWeeks(t)}주` : ''})</button>`).join('')}</div>
+      <label class="f"><span>작품 제목 *</span><input id="rf-title" maxlength="40" value="${esc(r.title)}" data-act-input="rf-title" placeholder="예: 서울, 새벽 세 시"></label>
+      ${r.type === 'album' && !albumUnlocked() ? '<div class="small bad-t mt">🔒 정규 앨범은 EP를 한 장 이상 내거나 국내 인지도 25 이상이 되어야 낼 수 있습니다.</div>' : ''}
+      <div class="grid g2 mt">
+        <div class="card"><h3>🎵 곡 선택 <span class="sub">${mn}~${mx}곡</span></h3>
+          <div class="list scroll" style="max-height:300px">${un.map(x => `<label class="row" style="cursor:pointer"><input type="checkbox" data-act="rf-toggle" data-id="${x.id}" ${r.ids.includes(x.id) ? 'checked' : ''}>${gradeEl(x.quality)}<span class="grow">${esc(x.title)} <span class="tiny muted">${x.genre}${x.style ? ' · ' + esc(x.style) : ''} · ${x.theme}${x.feats.length ? ' · feat' : ''}</span></span></label>`).join('') || '<div class="empty">미발매 곡이 없습니다</div>'}</div></div>
+        <div class="card"><h3>📋 트랙리스트 <span class="sub">${sel.length}곡 · ◉ = 타이틀곡</span></h3>
+          ${sel.length ? sel.map((x, i) => `<div class="trk"><span class="bold center">${i + 1}</span><input value="${esc(x.title)}" data-act-change="rf-rename" data-id="${x.id}" maxlength="40">
+            <div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn sm ${r.titleId === x.id ? 'primary' : ''}" data-act="rf-title-track" data-id="${x.id}">${r.titleId === x.id ? '◉' : '○'}</button><button class="btn sm" data-act="rf-move" data-id="${x.id}" data-d="-1">↑</button><button class="btn sm" data-act="rf-move" data-id="${x.id}" data-d="1">↓</button></div></div>`).join('') : '<div class="empty">왼쪽에서 곡을 선택하세요</div>'}
+          ${sel.length > 1 ? `<div class="tiny dim mt">예상 응집력 <b>${computeCohesion(sel, r.concept, r.type)}</b>/100 · 평균 완성도 <b>${Math.round(avg(sel.map(x => x.quality)))}</b></div>` : ''}</div>
+      </div>`;
+  } else if (step === 2) {
+    const c = r.cover;
+    const opt = (k, map) => Object.keys(map).map(v => `<button class="tab ${(c[k] || Object.keys(map)[0]) === v ? 'on' : ''}" data-act="rw-cover-opt" data-k="${k}" data-v="${v}">${map[v]}</button>`).join('');
+    body = `<div class="rel"><div class="col" style="align-items:center"><div id="rw-cover">${coverEl(c, r.title || '제목 없음', 'xl', p.stage)}</div><div class="tiny dim">미리보기</div></div>
+      <div class="col grow">
+        <div class="small muted bold">패턴</div><div class="tabs" style="margin:0">${opt('pattern', COVER_PATTERNS)}</div>
+        <div class="small muted bold">글꼴</div><div class="tabs" style="margin:0">${opt('font', COVER_FONTS)}</div>
+        <div class="small muted bold">제목 위치</div><div class="tabs" style="margin:0">${opt('layout', COVER_LAYOUTS)}</div>
+        <div class="row"><span class="small muted">색</span><input type="color" id="rf-c1" value="${esc(c.c1)}" data-act-input="rf-cover"><input type="color" id="rf-c2" value="${esc(c.c2)}" data-act-input="rf-cover">
+          <span class="small muted">상징</span><input id="rf-emoji" maxlength="4" value="${esc(c.emoji)}" data-act-input="rf-cover" style="width:70px">
+          <label class="row small" style="cursor:pointer"><input type="checkbox" data-act-change="rw-artist" ${c.artist ? 'checked' : ''}> 아티스트 이름 표시</label></div>
+        <label class="f"><span>앨범 소개 / 컨셉 (20자 이상이면 응집력 보너스)</span><textarea id="rf-concept" maxlength="300" data-act-input="rf-concept" placeholder="이 앨범은 ...">${esc(r.concept)}</textarea></label>
+      </div></div>`;
+  } else if (step === 3) {
+    const minW = prepWeeks(r.type), off = r.weekOffset != null ? r.weekOffset : minW;
+    const weeks = []; for (let w = minW; w <= minW + 6; w++) weeks.push(w);
+    const mix = r.type === 'mixtape';
+    body = `<div class="card mb"><h3>📅 발매일 <span class="sub">대형 아티스트 컴백과 겹치면 관심이 분산됩니다</span></h3>
+        <div class="grid gauto" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${weeks.map(w => { const cp = competitionAt(S.t + w); return `<button class="act" style="${off === w ? 'border-color:var(--accent);background:#2a1f3d' : ''}" data-act="rw-week" data-v="${w}"><b>${w ? `${w}주 후` : '이번 주'}</b><span>${dateLabel(S.t + w + (w ? 0 : 1))}</span><span class="${cp.rivals.length ? 'warn-t' : 'good-t'}">${cp.rivals.length ? '⚔️ ' + cp.rivals.slice(0, 2).map(n => esc(n.name)).join(', ') + (cp.rivals.length > 2 ? ` 외 ${cp.rivals.length - 2}` : '') : '✅ 경쟁작 없음'}</span></button>`; }).join('')}</div></div>
+      ${mix ? '<div class="small muted">🎁 믹스테이프는 무료 공개라 홍보·뮤비·피지컬 옵션이 없습니다.</div>' : `
+      <div class="grid g2">
+        <div class="col">
+          ${(r.type === 'EP' || r.type === 'album') ? `<label class="f"><span>🎧 선공개곡 (발매 2주 이상 전에 한 곡 먼저 공개, 하입↑)</span><select data-act-change="rw-pre" ${off < 2 ? 'disabled' : ''}><option value="">없음</option>${r.ids.map(song).filter(Boolean).map(x => `<option value="${x.id}" ${r.preId === x.id ? 'selected' : ''}>${esc(x.title)}${x.id === r.titleId ? ' (타이틀)' : ''}</option>`).join('')}</select></label>` : ''}
+          <label class="f"><span>🎬 타이틀곡 뮤직비디오</span><select data-act-change="rw-mv"><option value="-1">제작 안 함</option>${MV_BUDGETS.map((b, i) => `<option value="${i}" ${r.mv === i ? 'selected' : ''}>${b.label}</option>`).join('')}</select></label>
+          <label class="f"><span>📣 홍보 예산</span><select id="rf-promo" data-act-change="rf-promo">${PROMO_OPTIONS.map((o, i) => `<option value="${i}" ${r.promo === i ? 'selected' : ''}>${o.label} — 노출 x${o.mult}</option>`).join('')}</select></label>
+          <label class="row small" style="cursor:pointer"><input type="checkbox" data-act-change="rw-showcase" ${r.showcase ? 'checked' : ''}> 🎤 발매 쇼케이스 (${fmtMoney(showcaseCost())}) <span class="tiny dim">— 스트리밍↑, 언론 점수 소폭↑</span></label>
+          <label class="f"><span>🤝 합작 파트너 (친밀도 60+)</span><select data-act-change="rf-partner"><option value="">없음 (단독 작품)</option>${collabPartners().map(n => `<option value="${n.id}" ${r.partner === n.id ? 'selected' : ''}>${n.region === 'GLOBAL' ? '🌎 ' : ''}${esc(n.name)} (${n.genre}, ⭐${Math.round(n.fame)})</option>`).join('')}</select></label>
+          <label class="row small" style="cursor:pointer"><input type="checkbox" data-act-change="rf-sajaegi" ${r.sajaegi ? 'checked' : ''}> 🕶️ <span class="bad-t">음원 사재기 (3,000만원)</span> <span class="tiny dim">— 적발 시 형사 처벌</span></label>
+        </div>
+        <div class="col"><span class="small muted bold">💿 피지컬 음반</span>
+          ${PHYSICAL.map(ph => `<label class="review row" style="cursor:pointer;${(r.physical || 'none') === ph.id ? 'border-color:var(--accent)' : ''}"><input type="radio" name="rw-phys" value="${ph.id}" data-act-change="rw-phys" ${(r.physical || 'none') === ph.id ? 'checked' : ''}><div class="grow"><b>${ph.name}</b>${ph.qty ? ` <span class="tiny muted">제작비 ${fmtMoney(ph.qty * ph.unit)} · 정가 ${fmtMoney(ph.price)}</span>` : ''}<div class="tiny dim">${ph.desc}</div></div></label>`).join('')}
+        </div>
+      </div>`}`;
+  } else {
+    const o = relOpts(), c = releasePlanCost(o), f = arForecast(o);
+    const rows = [['제작비 (믹싱·마스터링·유통)', c.prod, c.prodFull > c.prod ? `${c.prodWho} 부담 ${fmtMoney(c.prodFull - c.prod)}` : ''], ['홍보', c.promo], ['뮤직비디오', c.mv], ['피지컬 음반', c.phys], ['쇼케이스', c.show], ['사재기', c.saj]].filter(x => x[1] || x[2]);
+    body = `<div class="rel"><div class="col" style="align-items:center">${coverEl(r.cover, r.title || '제목 없음', 'xl', p.stage)}</div>
+      <div class="col grow">
+        <div><b style="font-size:18px">『${esc(r.title)}』</b> <span class="pill acc">${typeName(r.type)}</span> <span class="pill">${o.weekOffset ? `${o.weekOffset}주 후 · ${dateLabel(S.t + o.weekOffset)}` : '즉시 발매'}</span></div>
+        <div class="small">${sel.map((x, i) => `${i + 1}. ${esc(x.title)}${x.id === r.titleId ? ' ◉' : ''}${x.id === o.preId ? ' (선공개)' : ''}`).join(' · ')}</div>
+        <table class="mt"><tr><th>항목</th><th class="right">비용</th></tr>${rows.map(x => `<tr><td>${x[0]}${x[2] ? ` <span class="tiny dim">${esc(x[2])}</span>` : ''}</td><td class="right">${fmtMoney(x[1])}</td></tr>`).join('')}
+          <tr><td class="bold">합계</td><td class="right bold ${c.total > p.money ? 'bad-t' : ''}">${fmtMoney(c.total)}</td></tr></table>
+        <div class="tiny ${c.total > p.money ? 'bad-t' : 'dim'}">보유 ${fmtMoney(p.money)}${c.total > p.money ? ' — 돈이 부족합니다' : ''}</div>
+        ${f ? `<div class="review mt"><div class="bold">🧑‍💼 A&R 팀 예측</div>
+          <div class="row mt"><span>예상 평단 지수 <b class="gold-t">${f.low}~${f.high}</b></span><span>예상 첫 주 타이틀 스트리밍 <b>${fmtNum(f.firstWeek)}</b></span><span class="pill">${f.chart}</span></div>
+          <div class="col small mt" style="gap:3px">${f.notes.map(n => `<div>• ${esc(n)}</div>`).join('')}</div></div>` : ''}
+      </div></div>`;
+  }
+  const canNext = step < 4;
+  return `<h2>💿 발매 캠페인</h2>
+    <div class="tabs">${names.map((n, i) => `<button class="tab ${step === i + 1 ? 'on' : ''}" data-act="rw-step" data-s="${i + 1}">${i + 1}. ${n}</button>`).join('')}</div>
+    ${body}
+    <div class="foot"><button class="btn" data-act="close">취소</button>${step > 1 ? `<button class="btn" data-act="rw-step" data-s="${step - 1}">◀ 이전</button>` : ''}${canNext ? `<button class="btn primary" data-act="rw-step" data-s="${step + 1}">다음 ▶</button>` : `<button class="btn primary" data-act="do-release">${relOpts().weekOffset ? `📅 발매 예약 (${relOpts().weekOffset}주 후)` : '🚀 지금 발매'}</button>`}</div>`;
+}
 
 function releaseResultHtml(rel, notes) {
   const tr = rel.trackIds.map(song);
   const reacts = S.reactions.filter(r => r.src === rel.id).slice(0, 8);
   return `<h2>🎉 「${esc(rel.title)}」 발매!</h2>
-  <div class="rel">${coverEl(rel.cover, rel.title, 'lg')}
+  <div class="rel">${coverEl(rel.cover, rel.title, 'lg', rel.compName || S.player.stage)}
     <div class="grow col">
       <div class="row"><span class="pill acc">${typeName(rel.type)}</span><span class="pill">${rel.genre}</span><span class="pill">${tr.length}곡</span>${rel.type !== 'single' ? `<span class="pill">응집력 ${rel.cohesion}</span>` : ''}</div>
       <div class="row"><div><div class="small muted">평단 지수</div><div class="score-big ${rel.critic >= 75 ? 'gold-t' : rel.critic < 50 ? 'bad-t' : ''}">${rel.critic}</div></div></div>
@@ -388,12 +473,12 @@ function viewDisco() {
   ${rels.length ? rels.map(r => {
     const tr = r.trackIds.map(song);
     const tot = sum(tr.map(s => s.totalDom + s.totalGlob));
-    return `<div class="card mb"><div class="rel">${coverEl(r.cover, r.title)}
+    return `<div class="card mb"><div class="rel">${coverEl(r.cover, r.title, '', r.compName || S.player.stage)}
       <div class="grow col" style="gap:6px">
         <div class="row"><b style="font-size:17px">${esc(r.title)}</b><span class="pill acc">${typeName(r.type)}</span><span class="pill">${r.genre}</span><span class="small muted">${dateLabel(r.t)}${r.label ? ' · ' + esc(labelOf(r.label).name) : ''}</span></div>
         ${r.concept ? `<div class="small muted">“${esc(r.concept)}”</div>` : ''}
         <div class="row"><span>평단 지수 <b class="${r.critic >= 75 ? 'gold-t' : ''}">${r.critic}</b></span>${r.type !== 'single' ? `<span class="muted">· 응집력 ${r.cohesion}</span>` : ''}<span class="muted">· 누적 ${fmtNum(tot)}회</span>${r.peakBB200 ? `<span class="pill gold">빌보드 200 최고 #${r.peakBB200}</span>` : ''}</div>
-        <div class="row">${r.reviews.map(v => `<span class="pill" title="${esc(v.text)}">${esc(v.name)} <b class="gold-t">${esc(v.display)}</b>${v.badge ? ' 🏅' : ''}</span>`).join('')}<button class="btn sm" data-act="show-reviews" data-id="${r.id}">리뷰 전문</button>${canDeluxe(r) ? `<button class="btn sm" data-act="deluxe-form" data-id="${r.id}" ${unreleasedSongs().length ? '' : 'disabled'}>💽 디럭스 에디션</button>` : r.deluxe ? '<span class="pill">💽 Deluxe</span>' : ''}</div>
+        <div class="row">${r.reviews.map(v => `<span class="pill" title="${esc(v.text)}">${esc(v.name)} <b class="gold-t">${esc(v.display)}</b>${v.badge ? ' 🏅' : ''}</span>`).join('')}<button class="btn sm" data-act="show-reviews" data-id="${r.id}">리뷰 전문</button>${releaseStatPills(r)}${canDeluxe(r) ? `<button class="btn sm" data-act="deluxe-form" data-id="${r.id}" ${unreleasedSongs().length ? '' : 'disabled'}>💽 디럭스 에디션</button>` : r.deluxe ? '<span class="pill">💽 Deluxe</span>' : ''}</div>
       </div></div>
       <div class="tbl-wrap mt"><table><tr><th>#</th><th>곡</th><th>완성도</th><th>누적 스트리밍</th><th>이번 주</th><th>최고 순위</th></tr>
       ${tr.map((s, i) => `<tr><td>${i + 1}</td><td>${s.id === r.titleTrackId ? '<span class="pill acc">타이틀</span> ' : ''}${esc(s.title)}${s.feats.length ? ` <span class="small muted">(Feat. ${s.feats.map(f => esc(artistName(f))).join(', ')})</span>` : ''}</td><td>${gradeEl(s.quality)}</td><td>${fmtNum(s.totalDom + s.totalGlob)}</td><td>${fmtNum(s.dom + s.glob)}</td><td>${songChartInfo(s) || '<span class="dim">-</span>'}</td></tr>`).join('')}
@@ -411,13 +496,14 @@ function viewCharts() {
   const meta = {
     melon: ['🍈 멜론 TOP 100', '국내 주간 스트리밍 기준', '주간 스트리밍'],
     hot100: ['🇺🇸 Billboard HOT 100', '글로벌 주간 스트리밍 기준', 'Weekly Streams'],
-    bb200: ['💿 Billboard 200', '앨범 환산 판매량(유닛) 기준', 'Units']
+    bb200: ['💿 Billboard 200', '앨범 환산 판매량(유닛) 기준', 'Units'],
+    circle: ['📀 써클 앨범 차트', '국내 음반(피지컬) 주간 판매량 기준', '판매량']
   }[c];
   return `<div class="page-title">📊 차트 <span class="small muted">${dateLabel(S.charts.t || S.t)} 기준</span></div>
   ${S.trends ? `<div class="card mb row"><b>🔥 ${S.trends.year} 트렌드</b>${S.trends.hot.map(h => `<span class="pill gold">${esc(h.style)} <span class="dim">${h.genre}</span></span>`).join('')}<b class="mt" style="margin-left:8px">🧊 침체</b>${S.trends.cold.map(h => `<span class="pill">${esc(h.style)}</span>`).join('')}<span class="tiny dim">트렌드 스타일은 스트리밍↑, 평단은 편승을 싫어하고 침체 장르의 고집을 좋아합니다.</span></div>` : ''}
-  <div class="tabs">${[['melon', '🍈 멜론 TOP 100'], ['hot100', '🇺🇸 HOT 100'], ['bb200', '💿 빌보드 200']].map(([id, n]) => `<button class="tab ${c === id ? 'on' : ''}" data-act="chart-tab" data-c="${id}">${n}</button>`).join('')}</div>
+  <div class="tabs">${[['melon', '🍈 멜론 TOP 100'], ['hot100', '🇺🇸 HOT 100'], ['bb200', '💿 빌보드 200'], ['circle', '📀 써클 앨범']].map(([id, n]) => `<button class="tab ${c === id ? 'on' : ''}" data-act="chart-tab" data-c="${id}">${n}</button>`).join('')}</div>
   <div class="card"><h3>${meta[0]} <span class="sub">${meta[1]}</span></h3>
-  ${list.length ? `<div class="tbl-wrap"><table><tr><th>순위</th><th></th><th>${c === 'bb200' ? '앨범' : '곡'}</th><th>아티스트</th><th class="right">${meta[2]}</th><th class="right">최고</th><th class="right">주</th></tr>
+  ${list.length ? `<div class="tbl-wrap"><table><tr><th>순위</th><th></th><th>${c === 'bb200' || c === 'circle' ? '앨범' : '곡'}</th><th>아티스트</th><th class="right">${meta[2]}</th><th class="right">최고</th><th class="right">주</th></tr>
   ${list.map((e, i) => `<tr class="${e.isPlayer || e.featPlayer ? 'me' : ''}"><td class="rank">${i + 1}</td>${mvEl(e, i + 1)}<td>${esc(e.title)}</td><td class="muted">${esc(e.artist)}</td><td class="right">${fmtNum(e.value)}</td><td class="right">${e.peak}</td><td class="right">${e.weeks}</td></tr>`).join('')}
   </table></div>` : '<div class="empty">차트 데이터가 없습니다.</div>'}</div>`;
 }
@@ -663,6 +749,7 @@ function weeklyHtml(sm) {
     <div class="kpi"><div class="l">⭐ 국내 인지도</div><div class="bold">${p.fame.toFixed(1)} (${delta(sm.fameDelta, 1)})</div></div>
     <div class="kpi"><div class="l">🌎 해외 인지도</div><div class="bold">${p.globalFame.toFixed(1)} (${delta(sm.globalDelta, 1)})</div></div>
   </div>
+  ${(sm.firstWeek || []).map(id => { const r = release(id); if (!r || !r.firstWeek) return ''; const f = r.firstWeek; return `<div class="review mt" style="border-color:var(--accent)"><div class="bold">📊 『${esc(r.title)}』 첫 주 성적</div><div class="row small mt"><span>스트리밍 <b>${fmtNum(f.dom + f.glob)}</b></span>${f.melon ? `<span>🍈 멜론 최고 <b>${f.melon}위</b></span>` : '<span class="muted">멜론 차트인 실패</span>'}${f.hot ? `<span>🇺🇸 HOT 100 <b>${f.hot}위</b></span>` : ''}${f.bb ? `<span>💿 빌보드 200 <b>${f.bb}위</b></span>` : ''}${f.circle ? `<span>📀 써클 <b>${f.circle}위</b></span>` : ''}${f.phys ? `<span>음반 <b>${fmtNum(f.phys)}장</b></span>` : ''}<span class="muted">최다 재생: 「${esc(f.top)}」</span></div></div>`; }).join('')}
   ${myRanks.length ? `<div class="row mt">${myRanks.slice(0, 8).map(r => `<span class="pill acc">${esc(r)}</span>`).join('')}</div>` : ''}
   ${(sm.chart.length || sm.events.length) ? `<div class="ev-list">${sm.chart.concat(sm.events).map(e => `<div>${esc(e)}</div>`).join('')}</div>` : '<div class="muted mt">조용한 한 주였습니다.</div>'}
   ${S.inbox.filter(m => m.t === S.t).length ? `<div class="mt"><span class="pill acc">📬 새 제안 ${S.inbox.filter(m => m.t === S.t).length}건</span></div>` : ''}
@@ -839,6 +926,19 @@ function viewBeef() {
 }
 
 
+
+function releaseStatPills(r) {
+  const out = [];
+  const f = r.firstWeek;
+  if (f) out.push(`<span class="pill" title="첫 주 성적">📊 첫 주 ${fmtNum(f.dom + f.glob)}${f.melon ? ` · 멜론 ${f.melon}위` : ''}</span>`);
+  if (r.physical) out.push(`<span class="pill">💿 ${esc(r.physical.name)} ${fmtNum(r.physical.sold)}/${fmtNum(r.physical.qty)}장</span>`);
+  if (r.peakCircle) out.push(`<span class="pill gold">📀 써클 최고 #${r.peakCircle}</span>`);
+  if (r.plan && r.plan.mv >= 0) out.push('<span class="pill">🎬 MV</span>');
+  if (r.plan && r.plan.showcase) out.push('<span class="pill">🎤 쇼케이스</span>');
+  if (r.plan && r.plan.pre && song(r.plan.pre)) out.push(`<span class="pill">🎧 선공개 「${esc(song(r.plan.pre).title)}」</span>`);
+  return out.join('');
+}
+
 /* ---------- 발매 준비 · 라이프 ---------- */
 function releaseCostInfo(r) {
   const n = r.ids.length || releaseRules(r.type)[0];
@@ -854,7 +954,7 @@ function pendingCard() {
   const pr = S.pendingRelease;
   if (!pr) return '';
   const left = Math.max(0, pr.releaseT - S.t);
-  return `<div class="card mb" style="border-color:var(--accent)"><div class="row"><div class="grow"><b>📅 ${typeName(pr.opts.type)} 『${esc(pr.opts.title)}』 발매 준비 중</b><div class="small muted">${left ? `${left}주 뒤 발매` : '이번 주 발매'} · ${pr.opts.trackIds.length}곡 · 하입 ${Math.round(S.player.hype)} — SNS 티저로 하입을 더 올려 보세요</div></div><button class="btn sm bad" data-act="cancel-release">발매 취소</button></div></div>`;
+  return `<div class="card mb" style="border-color:var(--accent)"><div class="row"><div class="grow"><b>📅 ${typeName(pr.opts.type)} 『${esc(pr.opts.title)}』 발매 준비 중</b><div class="small muted">${left ? `${left}주 뒤 발매` : '이번 주 발매'} · ${pr.opts.trackIds.length}곡 · 하입 ${Math.round(S.player.hype)}${pr.opts.preId && song(pr.opts.preId) ? ` · 선공개 「${esc(song(pr.opts.preId).title)}」 스트리밍 중` : ''} — SNS 티저로 하입을 더 올려 보세요</div>${(() => { const cp = competitionAt(pr.releaseT); return cp.rivals.length ? `<div class="tiny warn-t">⚔️ 같은 시기 컴백: ${cp.rivals.slice(0, 4).map(n => esc(n.name)).join(', ')}</div>` : ''; })()}</div><button class="btn sm bad" data-act="cancel-release">발매 취소</button></div></div>`;
 }
 function viewLife() {
   const p = S.player, cur = homeOf();
@@ -928,7 +1028,8 @@ function handle(act, el) {
           <div>• 곡을 완성하면 <b>작업 노트</b>가, 발매하면 평론가들이 앨범 제목·타이틀곡·수록곡을 직접 언급하는 리뷰를 씁니다.</div>
           <div>• 인지도 30이 되면 <b>내 레이블</b>을 세워 아티스트를 영입할 수 있어요. 투어와 굿즈로 돈을 벌 수도 있습니다.</div>
           <div>• <b>⚔️ 디스·사건</b>: 디스곡의 대상(아티스트·레이블·크루·씬 전체·평론가·방송)과 수위를 직접 정하고, 답디스가 오가는 디스전을 벌일 수 있어요. 위험한 선택(무단 샘플링, 사재기, 탈세, 마약…)은 수사와 재판으로 이어질 수 있습니다.</div>
-          <div>• <b>💿 발매 준비</b>: EP·정규는 제작비(믹싱·마스터링·유통)가 들고, 예약 후 몇 주 뒤에 나옵니다(난이도 '쉬움' 제외). 정규 앨범은 EP를 먼저 내야 열립니다. 팬들은 유명해질수록, 전작이 좋을수록 더 큰 기대를 합니다.</div>
+          <div>• <b>💿 발매 캠페인</b>: 구성 → 아트워크(커버 디자인) → 발매 전략(발매일·선공개곡·뮤비·피지컬 음반·쇼케이스) → 확인 4단계로 발매해요. 대형 아티스트 컴백과 겹치지 않게 날짜를 고르고, A&R 팀 예측을 참고하세요. 발매 다음 주엔 <b>첫 주 성적</b>이 나옵니다.</div>
+          <div>• EP·정규는 제작비와 준비 기간이 있고(난이도 '쉬움' 제외), 정규 앨범은 EP를 먼저 내야 열립니다. 팬들은 유명해질수록, 전작이 좋을수록 더 큰 기대를 합니다.</div>
           <div>• <b>🏠 라이프</b>: 집을 옮기고(홈 스튜디오·멘탈), 플렉스하고, 투자할 수 있어요. 발매 직후엔 <b>📺 음악방송</b>에 나가 1위를 노려 보세요.</div>
           <div>• 멘탈 관리 필수! 멘탈이 바닥나면 번아웃이 옵니다.</div>
           <div>• 준비됐으면 오른쪽 위 <b>다음 주 ▶</b>로 시간을 진행하세요.</div>
@@ -1055,11 +1156,25 @@ function handle(act, el) {
     case 'release-form': case 'comp-form': case 'lcomp-form': {
       if (!unreleasedSongs().length) { toast('미발매 곡이 없습니다', 'bad'); return; }
       const comp = act !== 'release-form';
-      UI.rel = { comp, source: act === 'lcomp-form' ? 'label' : 'crew', type: comp ? 'compilation' : 'EP', title: '', ids: [], titleId: null, concept: '', promo: 0, cover: { c1: '#7c3aed', c2: '#ec4899', emoji: comp ? '📀' : '🎵' } };
+      UI.rel = { comp, source: act === 'lcomp-form' ? 'label' : 'crew', type: comp ? 'compilation' : 'EP', title: '', ids: [], titleId: null, concept: '', promo: 0,
+        cover: { c1: '#7c3aed', c2: '#ec4899', emoji: comp ? '📀' : '🎵', pattern: 'gradient', font: 'sans', layout: 'bottom', artist: true },
+        step: 1, weekOffset: null, preId: null, mv: -1, physical: 'none', showcase: false };
       if (!comp && unreleasedSongs().length < 3) UI.rel.type = 'single';
       rerenderRelease(); return;
     }
-    case 'rf-type': UI.rel.type = d.type; rerenderRelease(); return;
+    case 'rf-type': UI.rel.type = d.type; UI.rel.weekOffset = null; if (d.type === 'single' || d.type === 'mixtape') UI.rel.preId = null; rerenderRelease(); return;
+    case 'rw-step': {
+      const r = UI.rel, to = Number(d.s);
+      if (to > 1 && (r.step || 1) === 1) {
+        const [mn, mx] = releaseRules(r.type);
+        if (!r.title.trim()) { toast('작품 제목을 입력하세요', 'bad'); return; }
+        if (r.ids.length < mn || r.ids.length > mx) { toast(`${typeName(r.type)}${josa(typeName(r.type), '은')} ${mn}~${mx}곡이어야 합니다`, 'bad'); return; }
+        if (r.type === 'album' && !albumUnlocked()) { toast('정규 앨범은 아직 잠겨 있습니다', 'bad'); return; }
+      }
+      r.step = to; rerenderRelease(); return;
+    }
+    case 'rw-cover-opt': UI.rel.cover[d.k] = d.v; rerenderRelease(); return;
+    case 'rw-week': UI.rel.weekOffset = Number(d.v); if (UI.rel.weekOffset < 2) UI.rel.preId = null; rerenderRelease(); return;
     case 'rf-toggle': {
       const r = UI.rel;
       if (r.ids.includes(d.id)) { r.ids = r.ids.filter(x => x !== d.id); if (r.titleId === d.id) r.titleId = r.ids[0] || null; }
@@ -1076,7 +1191,7 @@ function handle(act, el) {
       const r = UI.rel;
       const res = act === 'do-comp'
         ? releaseCompilation({ title: r.title, songIds: r.ids, cover: r.cover, promo: r.promo, source: r.source })
-        : scheduleRelease({ type: r.type, title: r.title, trackIds: r.ids, titleTrackId: r.titleId, cover: r.cover, concept: r.concept, promo: r.promo, sajaegi: !!r.sajaegi, partner: r.partner || null });
+        : scheduleRelease(relOpts());
       if (!res.ok) { toast(res.msg, 'bad'); return; }
       render();
       if (res.scheduled) { closeModal(); toast(res.msg, 'good'); return; }
@@ -1167,6 +1282,11 @@ function handleChange(act, el) {
     }
     case 'rf-promo': UI.rel.promo = Number(el.value); return;
     case 'rf-sajaegi': UI.rel.sajaegi = el.checked; return;
+    case 'rw-pre': UI.rel.preId = el.value || null; return;
+    case 'rw-mv': UI.rel.mv = Number(el.value); return;
+    case 'rw-phys': UI.rel.physical = el.value; rerenderRelease(); return;
+    case 'rw-showcase': UI.rel.showcase = el.checked; return;
+    case 'rw-artist': UI.rel.cover.artist = el.checked; { const cv = $('#rw-cover'); if (cv) cv.innerHTML = coverEl(UI.rel.cover, UI.rel.title || '제목 없음', 'xl', S.player.stage); } return;
     case 'rf-partner': UI.rel.partner = el.value || null; return;
     case 'sf-genre': $('#sf-style').innerHTML = styleOptions(el.value); return;
     case 'sf-theme': $('#sf-diss').style.display = el.value === '디스' ? '' : 'none'; return;
@@ -1182,9 +1302,11 @@ function handleInput(act, el) {
     case 'rf-title': r.title = el.value; { const ct = document.querySelector('.modal .cover .ct'); if (ct) ct.textContent = el.value || '제목 없음'; } return;
     case 'rf-concept': r.concept = el.value; return;
     case 'rf-cover': {
-      r.cover = { c1: $('#rf-c1').value, c2: $('#rf-c2').value, emoji: $('#rf-emoji').value || '🎵' };
+      r.cover = Object.assign(r.cover || {}, { c1: $('#rf-c1').value, c2: $('#rf-c2').value, emoji: $('#rf-emoji').value || '🎵' });
+      const wz = $('#rw-cover');
+      if (wz) { wz.innerHTML = coverEl(r.cover, r.title || '제목 없음', 'xl', S.player.stage); return; }
       const cv = document.querySelector('.modal .cover');
-      if (cv) { cv.style.background = `linear-gradient(135deg,${r.cover.c1},${r.cover.c2})`; cv.querySelector('.e').textContent = r.cover.emoji; }
+      if (cv) { cv.style.background = coverBackground(r.cover); cv.querySelector('.e').textContent = r.cover.emoji; }
       return;
     }
   }

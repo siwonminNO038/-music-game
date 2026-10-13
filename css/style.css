@@ -157,6 +157,10 @@ label.f > span { font-weight: 600; }
 .cover .e { font-size: 38px; line-height: 1; }
 .cover .ct { font-size: 11px; font-weight: 800; text-shadow: 0 1px 3px rgba(0, 0, 0, .6); word-break: keep-all; }
 .cover.lg { width: 150px; height: 150px; }
+.cover.xl { width: 220px; height: 220px; padding: 14px; }
+.cover.xl .e { font-size: 76px; }
+.cover.xl .ct { font-size: 17px; }
+.cover .ca { font-size: .8em; font-weight: 600; opacity: .85; margin-top: 2px; }
 .cover.lg .e { font-size: 54px; }
 .cover.sm { width: 48px; height: 48px; padding: 4px; border-radius: 7px; }
 .cover.sm .e { font-size: 22px; }
