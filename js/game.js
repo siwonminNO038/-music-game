@@ -66,7 +66,7 @@ const P = () => S.player;
 function totalFollowers() { const f = S.player.followers; return f.insta + f.x + f.youtube; }
 function artistName(id) { return id === 'player' ? S.player.stage : (npc(id) ? npc(id).name : '???'); }
 function crewMembers(cid) { return S.npcs.filter(n => n.crew === cid); }
-function unreleasedSongs() { return S.songs.filter(s => !s.releaseId); }
+function unreleasedSongs() { return S.songs.filter(s => !s.releaseId && !s.reserved); }
 function releasedSongs() { return S.songs.filter(s => s.releaseId); }
 
 /* ---------- 로그 ---------- */
@@ -144,7 +144,7 @@ function react(context, n, vars = {}, opts = {}) {
 /* =========================================================
  *  새 게임
  * ========================================================= */
-function newGame({ name, stage, bgId, genre, gender }) {
+function newGame({ name, stage, bgId, genre, gender, difficulty }) {
   const bg = BACKGROUNDS.find(b => b.id === bgId) || BACKGROUNDS[0];
   S = {
     v: 1, uid: 0, t: 1,
@@ -170,8 +170,10 @@ function newGame({ name, stage, bgId, genre, gender }) {
     history: [], lastSummary: null, cooldowns: {},
     flags: {}, flagT: {}, story: [], npcWins: {}, goalsDone: {}, chapter: 0,
     myLabel: null, rivalId: null, mentorId: null, lastRelCritic: null,
-    wars: [], crimes: [], cases: [], trends: null, yearIncome: {}
+    wars: [], crimes: [], cases: [], trends: null, yearIncome: {},
+    difficulty: DIFFICULTY[difficulty] ? difficulty : 'normal', pendingRelease: null, invest: {}, flexOwned: [], musicShowWins: 0
   };
+  S.player.home = bg.id === 'rich' ? 'apt' : 'banjiha';
   // NPC
   NPC_KR.forEach(n => { const x = mkNpc(n, 'KR'); x.parody = true; S.npcs.push(x); });
   NPC_GLOBAL.forEach(n => { const x = mkNpc(n, 'GLOBAL'); x.parody = true; S.npcs.push(x); });
@@ -403,7 +405,7 @@ function featChance(n) {
   const p = S.player;
   if (n.region === 'GLOBAL' && p.globalFame < 8) return 0;
   const f = n.region === 'GLOBAL' ? p.globalFame + p.fame * 0.25 : p.fame;
-  let c = 0.3 + n.rel / 140 + (f - n.fame) / 90;
+  let c = 0.3 + n.rel / 140 + (f - n.fame) / 90 + D().feat;
   if (p.label && p.label === n.label) c += 0.2;
   if (p.crew && p.crew === n.crew) c += 0.25;
   if (n.trait === '까칠함' || n.trait === '신비주의') c -= 0.08;
@@ -482,6 +484,7 @@ function makeSong(opts) {
   feats.forEach(fid => { const f = npc(fid); a.hook += 3 + f.skill * 0.05; a.perf += 2 + f.skill * 0.03; a.originality += 1; });
   if (opts.genre !== p.genre) a.originality += 3;
   if (S.myLabel) { a.sound += S.myLabel.lv.studio * 2; }
+  a.sound += homeOf().studio;
   // 영감: 스토리에서 얻은 감정이 같은 주제의 곡에 녹아든다
   const insp = (p.inspiration || []).find(x => x.theme === th && x.until >= S.t);
   if (insp) {
@@ -512,9 +515,9 @@ function makeSong(opts) {
   S.songs.push(s);
   p.money -= money;
   S.ap -= apCost;
-  p.mental = clamp(p.mental - (opts.deep ? 8 : 5), 0, 100);
+  p.mental = clamp(p.mental - (opts.deep ? 8 : 5) * D().mental, 0, 100);
   // 작업하면서 성장
-  const gain = (k, g) => { sk[k] = clamp(sk[k] + g * (105 - sk[k]) / 100, 0, 100); };
+  const gain = (k, g) => { sk[k] = clamp(sk[k] + g * D().skill * (105 - sk[k]) / 100, 0, 100); };
   gain('lyric', 0.35); if (!prod) gain('produce', 0.35);
   Object.keys(GENRE_PERF[opts.genre]).forEach(k => gain(k, 0.3 * GENRE_PERF[opts.genre][k]));
   if (opts.deep) notes.push('⏳ 공들여 작업한 만큼 완성도가 올라갔습니다.');
@@ -552,7 +555,7 @@ function songNote(s, titleMatch) {
 }
 function grade(q) { return q >= 85 ? 'S' : q >= 75 ? 'A' : q >= 63 ? 'B' : q >= 50 ? 'C' : 'D'; }
 function deleteSong(id) {
-  const s = song(id); if (!s || s.releaseId) return;
+  const s = song(id); if (!s || s.releaseId || s.reserved) return;
   S.songs = S.songs.filter(x => x.id !== id); save();
 }
 
@@ -710,6 +713,11 @@ function reviewRelease(rel, tracks) {
     let raw = sum(Object.keys(o.w).map(k => o.w[k] * attrs[k]));
     const cw = rel.type === 'single' ? o.coh * 0.4 : o.coh;
     let s = raw * (1 - cw) + coh * cw + o.bias + p.cred * o.credWeight + rnd(-6, 6);
+    s += D().critic;
+    if (tracks.length >= 4) {
+      const mq = avg(tracks.map(t => t.quality));
+      s -= Math.min(6, tracks.filter(t => t.quality < mq - 15).length * 1.5); // 필러 트랙 감점
+    }
     const domStyle = (tracks.find(t => t.id === rel.titleTrackId) || tracks[0]).style;
     if (domStyle && isHot(domStyle)) s += o.id === 'wave' ? 2 : -2;
     if (domStyle && isCold(domStyle)) s += o.id === 'wave' ? -1 : 2.5;
@@ -749,10 +757,10 @@ function releaseWork(opts) {
   if (opts.type === 'mixtape') opts.promo = 0;
   if (onHiatus()) return { ok: false, msg: '지금은 발매할 수 없습니다.' };
   const promo = PROMO_OPTIONS[opts.promo || 0];
-  const sajaegiCost = opts.sajaegi ? 30000000 : 0;
-  if (p.money < promo.cost + sajaegiCost) return { ok: false, msg: '예산이 부족합니다.' };
-  if (p.money < promo.cost) return { ok: false, msg: '홍보 예산이 부족합니다.' };
-  p.money -= promo.cost;
+  const sajaegiCost = opts.sajaegi && !opts.prepaid ? 30000000 : 0;
+  const promoCost = opts.prepaid ? 0 : promo.cost;
+  if (p.money < promoCost + sajaegiCost) return { ok: false, msg: '예산이 부족합니다.' };
+  p.money -= promoCost;
 
   const gcount = {}; tracks.forEach(s => gcount[s.genre] = (gcount[s.genre] || 0) + 1);
   const genre = Object.keys(gcount).sort((a, b) => gcount[b] - gcount[a])[0];
@@ -776,9 +784,9 @@ function releaseWork(opts) {
   // 너무 자주 발매하면 관심이 분산된다
   const recent = S.releases.filter(r => r.id !== rel.id && S.t - r.t < 10 && r.type !== 'compilation').length;
   const fatigue = 1 / (1 + 0.45 * recent);
-  const domReach = (1500 + Math.pow(p.fame, 2.25) * 32 + Math.sqrt(totalFollowers()) * 25) * promo.mult * labPromo * hype * fatigue;
+  const domReach = (1500 + Math.pow(p.fame, 2.25) * 32 + Math.sqrt(totalFollowers()) * 25) * promo.mult * labPromo * hype * fatigue * D().stream;
   const globReach = (300 + Math.pow(p.globalFame, 2.4) * 350 + Math.sqrt(p.followers.youtube) * 40 + Math.pow(p.fame, 2.25) * 32 * 0.06)
-    * Math.sqrt(promo.mult) * (1 + (lab ? lab.global : 0) * 3) * hype * fatigue;
+    * Math.sqrt(promo.mult) * (1 + (lab ? lab.global : 0) * 3) * hype * fatigue * D().stream;
   const notes = [];
   if (recent >= 2) notes.push('😮‍💨 최근 발매가 잦아 리스너들의 관심이 분산되었습니다.');
   tracks.forEach((s, i) => {
@@ -831,7 +839,17 @@ function releaseWork(opts) {
   if (prevRel && prevRel.genre !== genre) react('genre_change', 3, vars, { src: rel.id });
   const feats = [...new Set(tracks.flatMap(s => s.feats))];
   if (feats.length) react('collab', 2, { title: rel.title, npc: npc(feats[0]).name }, { src: rel.id });
-  p.sentiment = clamp(p.sentiment + (c - 62) / 4 + (titleSong.attrs.hook - 60) / 10, 0, 100);
+  // 팬들의 기대치: 난이도와 인지도가 높을수록, 전작이 좋았을수록 높다
+  const expect = 62 + D().expect * 0.5 + (D().expect ? Math.max(0, p.fame - 30) * 0.12 : 0);
+  const prevBig = S.releases.filter(r => r.id !== rel.id && (r.type === 'EP' || r.type === 'album')).slice(-1)[0];
+  let slump = 0;
+  if (D().expect && prevBig && (opts.type === 'EP' || opts.type === 'album') && prevBig.critic - c > 6) {
+    slump = (prevBig.critic - c) * 0.3;
+    notes.push(`📉 전작 『${prevBig.title}』(평단 ${prevBig.critic})보다 아쉽다는 반응이 많습니다.`);
+    react('release_mid', 2, vars, { src: rel.id, weights: { old: 3, critic: 2 } });
+  }
+  if (D().expect && c < expect - 8 && p.fame >= 30) notes.push(`😕 인지도에 비해 기대 이하라는 평가입니다. (팬들의 기대치 약 ${Math.round(expect)})`);
+  p.sentiment = clamp(p.sentiment + (c - expect) / 4 + (titleSong.attrs.hook - 60) / 10 - slump, 0, 100);
   p.coreRatio = clamp(p.coreRatio + (c - 65) / 10, 3, 60);
   p.buzz += 4 + (opts.type === 'album' ? 6 : opts.type === 'EP' ? 3 : 0) + Math.max(0, c - 70) / 3;
   if (c >= 76) p.cred += 1;
@@ -871,9 +889,10 @@ function nextWeek() {
   const t = S.t, w = weekOf(t), y = yearOf(t);
   if (w === 1) yearStart(y, summary);
   if (p.military && t >= p.military.endT) discharge(summary);
+  lifeWeekly(summary);
 
   // 생활비
-  const living = 250000 + Math.round(p.fame * 8000);
+  const living = Math.round((250000 + p.fame * 8000) * D().cost) + lifeLivingCost();
   p.money -= living; summary.expense += living;
 
   // NPC 활동
@@ -918,11 +937,11 @@ function nextWeek() {
   const f = totalFollowers();
   const streamFame = clamp(15 * Math.log10(1 + dom + featDom * 0.3) - 50, 0, 55);
   const followerFame = clamp(9 * Math.log10(1 + f) - 25, 0, 40);
-  const target = clamp(streamFame * 0.6 + followerFame * 0.6 + 32 * (1 - Math.exp(-p.legacy / 30)) + Math.min(p.buzz, 30) * 0.5, 0, 100);
+  const target = clamp(streamFame * 0.6 + followerFame * 0.6 + 32 * (1 - Math.exp(-p.legacy / 30)) + Math.min(p.buzz, 30) * 0.5 - D().fame * Math.min(1, p.fame / 40), 0, 100);
   p.fame = clamp(p.fame + (target - p.fame) * 0.2, 0, 100);
   const gStream = clamp(16 * Math.log10(1 + glob + featGlob * 0.3) - 85, 0, 60);
   const gFollow = clamp(6 * Math.log10(1 + p.followers.youtube) - 30, 0, 15);
-  const gTarget = clamp(gStream * 0.7 + gFollow * 0.6 + 45 * (1 - Math.exp(-p.gLegacy / 25)), 0, 100);
+  const gTarget = clamp(gStream * 0.7 + gFollow * 0.6 + 45 * (1 - Math.exp(-p.gLegacy / 25)) - D().gfame * Math.min(1, p.globalFame / 30), 0, 100);
   p.globalFame = clamp(p.globalFame + (gTarget - p.globalFame) * 0.12, 0, 100);
   p.buzz = Math.min(p.buzz * 0.85, 80); p.hype *= 0.9;
 
@@ -1314,6 +1333,7 @@ function holdCeremony(a, y, summary) {
   if (!c || c.done) return;
   const p = S.player;
   let wins = 0, losses = 0;
+  const wonCats = [];
   c.cats.forEach(cat => {
     const w = cat.nominees.map(n => ({ n, v: n.score + rnd(-4, 4) })).sort((x, z) => z.v - x.v)[0].n;
     cat.winner = w.label;
@@ -1324,7 +1344,7 @@ function holdCeremony(a, y, summary) {
       const won = n === w;
       if (nom) nom.won = won;
       if (won) {
-        wins++;
+        wins++; wonCats.push(cat.name);
         S.trophies.push({ award: a.name, icon: a.icon, cat: cat.name, year: y, work: n.label, t: S.t, major: cat.major });
         p.legacy += a.prestige * (cat.major ? 0.55 : 0.3);
         if (a.region === 'GLOBAL') p.gLegacy += a.prestige * (cat.major ? 0.4 : 0.25);
@@ -1339,7 +1359,7 @@ function holdCeremony(a, y, summary) {
     });
   });
   c.done = true;
-  if (wins) react('award_win', 4 + wins, { award: a.name }, { weights: a.region === 'GLOBAL' ? { global: 3 } : {} });
+  if (wins) { react('award_win', 4 + wins, { award: a.name }, { weights: a.region === 'GLOBAL' ? { global: 3 } : {} }); if (!onHiatus()) speechInbox(a, wonCats); }
   else if (losses) { react('award_lose', 3, { award: a.name }); p.mental = clamp(p.mental - 3, 0, 100); }
   if (!wins && !losses) {
     const big = c.cats.find(x => x.major) || c.cats[0];
@@ -1384,9 +1404,9 @@ function actPractice(skill) {
   if (!useAP(1)) return { ok: false, msg: '행동력이 부족합니다.' };
   p.money -= cost;
   const v = p.skills[skill];
-  const g = rnd(0.9, 2.3) * (105 - v) / 100 * (p.mental < 30 ? 0.6 : 1) * (skill === 'vocal' || skill === 'produce' ? 1.2 : 1);
+  const g = rnd(0.9, 2.3) * (105 - v) / 100 * (p.mental < 30 ? 0.6 : 1) * (skill === 'vocal' || skill === 'produce' ? 1.2 : 1) * D().skill;
   p.skills[skill] = clamp(v + g, 0, 100);
-  p.mental = clamp(p.mental - 3, 0, 100);
+  p.mental = clamp(p.mental - 3 * D().mental, 0, 100);
   const msgs = { lyric: '노트에 라인을 빼곡히 채웠다', flow: '메트로놈 앞에서 플로우를 갈고닦았다', vocal: '보컬 레슨을 받았다', produce: '새 플러그인으로 비트를 쪼갰다', stage: '거울 앞에서 무대 연습을 했다' };
   save();
   return { ok: true, msg: `${msgs[skill]}. ${SKILL_NAMES[skill]} +${g.toFixed(1)}` + (cost ? ` (${fmtMoney(cost)})` : '') };
@@ -1401,7 +1421,7 @@ function actGig() {
   const fol = Math.round((20 + p.fame * 30) * rnd(0.6, 1.4) * (perfQ / 50));
   p.money += pay; p.followers.insta += Math.round(fol * 0.6); p.followers.youtube += Math.round(fol * 0.4);
   p.skills.stage = clamp(p.skills.stage + 0.5 * (105 - p.skills.stage) / 100, 0, 100);
-  p.mental = clamp(p.mental - 4, 0, 100);
+  p.mental = clamp(p.mental - 4 * D().mental, 0, 100);
   p.coreRatio = clamp(p.coreRatio + 0.2, 3, 60);
   p.sentiment = clamp(p.sentiment + (perfQ > 55 ? 1.5 : -0.5), 0, 100);
   if (p.fame >= 30 && R() < 0.3) react('post_live', 2);
@@ -1832,6 +1852,7 @@ function resolveInbox(id, choice, extra = {}) {
   const d = m.data;
   if (m.type === 'story') return resolveStory(m, choice);
   if (m.type === 'gfest' && choice === 'accept') return playGlobalFest(m);
+  if (m.type === 'speech') return giveSpeech(m, choice);
   if (m.type === 'case') {
     const r = choice === 'lawyer1' ? hireLawyer(d.caseId, 1) : choice === 'lawyer2' ? hireLawyer(d.caseId, 2) : setPlea(d.caseId, choice);
     const cs = S.cases.find(c => c.id === d.caseId);
@@ -2313,6 +2334,9 @@ function migrate() {
   Object.keys(pd).forEach(k => { if (S.player[k] === undefined) S.player[k] = pd[k]; });
   if (!S.trends) rollTrends(yearOf(S.t));
   ensureExpansion();
+  const ld = { difficulty: 'normal', pendingRelease: null, invest: {}, flexOwned: [], musicShowWins: 0 };
+  Object.keys(ld).forEach(k => { if (S[k] === undefined) S[k] = ld[k]; });
+  if (!S.player.home) S.player.home = 'banjiha';
   const parodies = new Set(NPC_KR.concat(NPC_GLOBAL).map(n => n.name));
   S.npcs.forEach(n => { if (n.parody === undefined) n.parody = parodies.has(n.name); });
   S.songs.forEach(s => { if (!s.note) s.note = songNote(s, titleFitsTheme(s.title, s.theme)); });
