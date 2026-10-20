@@ -224,7 +224,7 @@ function spawnRookies(y, nk, ng) {
     const region = i < nk ? 'KR' : 'GLOBAL';
     const n = mkNpc({
       name: genArtistName(region),
-      genre: pick(region === 'KR' ? ['힙합', '힙합', '힙합', 'R&B', 'R&B', '인디', '팝', '록', '일렉트로닉', '발라드', '트로트', '포크', '재즈', '메탈', '국악 퓨전'] : ['힙합', 'R&B', '팝', '인디', '라틴', '아프로비츠', '컨트리', 'J-팝']),
+      genre: pick(region === 'KR' ? ['힙합', '힙합', '힙합', 'R&B', 'R&B', '인디', '팝', '록', '일렉트로닉', '발라드', '트로트', '포크', '재즈', '메탈', '국악 퓨전', '하이퍼팝', '디지코어'] : ['힙합', 'R&B', '팝', '인디', '라틴', '아프로비츠', '컨트리', 'J-팝', '하이퍼팝', '디지코어']),
       fame: region === 'KR' ? rint(5, 25) : rint(40, 70), skill: rint(55, 88),
       trait: pick(['감성적', '유쾌함', '허세', '장인', '신비주의', '독설가']), bio: `${y}년 데뷔한 신인`
     }, region);
@@ -483,6 +483,8 @@ function makeSong(opts) {
   if (th === '사랑/이별' || th === '청춘') { a.hook += 4; }
   if (th === '디스') { a.lyric += 3; a.perf += 3; }
   if (th === '우울/불안') { a.lyric += 3; a.originality += 3; a.hook -= 2; }
+  const tfx = typeof themeFx === 'function' ? themeFx(th) : null;
+  if (tfx) for (const k in tfx) a[k] = (a[k] || 0) + tfx[k];
   if (prod) a.hook += 3;
   const st = styleOf(opts.genre, opts.style);
   if (st) Object.keys(st.fx).forEach(k => { a[k] += st.fx[k]; });
